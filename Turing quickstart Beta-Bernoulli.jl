@@ -22,9 +22,11 @@ begin
 	using Turing
 
 	# Import all libraries.
-	using Turing, Random, Distributions, DataFrames
+	using Turing, Distributions, DataFrames
 	#DirichletProcess, ChineseRestaurantProcess, StickBreakingProcess
 	using Turing.RandomMeasures
+	# DocStringExtensions provides $(SIGNATURES)
+	using DocStringExtensions
 	# Set a random seed.
 	Random.seed!(3)
 end
@@ -34,11 +36,29 @@ begin
 	x = "foo"
 	println("$x $(x) ",  "haha")
 	using Printf
-	@printf("%s %s", "foo", "bar")
+	@sprintf("%s %s", "foo", "bar")
 end
+
+# ╔═╡ 8849387c-f4b0-47f3-9061-e286e23edbde
+using Plots
+
+# Plot the cluster assignments over time
 
 # ╔═╡ c1836feb-ce9d-4e26-aa25-7e28dd55506e
 md"# Turing quickstart Beta-Bernoulli"
+
+# ╔═╡ 36c62876-1ab7-438b-8d5e-16ee391a11eb
+#    margin-left: 1%;
+#    margin-right: 5%;
+html"""<style>
+main {
+	margin: 0 auto;
+    max-width: 90%;
+	padding-left: max(50px, 1%);
+    padding-right: max(253px, 10%);
+	# 253px to accomodate TableOfContents(aside=true)
+}
+"""
 
 # ╔═╡ 49d67176-6130-4bc0-bd99-2f5a43e20b5d
 begin
@@ -552,8 +572,353 @@ begin
 	    bottom_margin=10*Plots.mm, size=(2000,930) ) 
 end
 
+# ╔═╡ 8f428c07-e87e-4642-be5e-2347a25a86f4
+md"## 9 Mixture model"
+
+# ╔═╡ c4065dfe-55c5-42a0-88bc-9231125757b9
+md"### 9.1 Two-component mixture model
+- https://turinglang.org/dev/tutorials/06-infinite-mixture-model/"
+
+# ╔═╡ af8227a8-3249-43dd-8bc6-0f08a05e81ef
+md"### 9.2  Finite Mixture Model
+
+If we have more than two components, this model can elegantly be extended using a Dirichlet distribution as prior for the mixing weights. Note that the Dirichlet distribution is the multivariate generalization of the beta distribution. The resulting model can be written as:
+
+ 
+
+which resembles the model in the Gaussian mixture model tutorial with a slightly different notation."
+
+# ╔═╡ 4756ab6b-fc05-40ca-9759-c6f1d0b78ff7
+md"### 9.3 Infinite Mixture Model
+
+The question now arises, is there a generalization of a Dirichlet distribution for which the dimensionality is infinite, i.e. 
+
+But first, to implement an infinite Gaussian mixture model in Turing, we first need to load the Turing.RandomMeasures module. RandomMeasures contains a variety of tools useful in nonparametrics."
+
+# ╔═╡ 9975d122-59e6-4513-ad82-7f5a7c37bbe4
+md"We now will utilize the fact that one can integrate out the mixing weights in a Gaussian mixture model allowing us to arrive at the Chinese restaurant process construction. See Carl E. Rasmussen: The Infinite Gaussian Mixture Model, NIPS (2000) for details.
+
+In fact, if the mixing weights are integrated out, the conditional prior for the latent variable is given by:
+ 
+$p(z_i=k|z_{\neg i}, \alpha) = \frac{n_k + \alpha K}{ N - 1 + \alpha}$
+
+
+where $z_{-i}$ are the latent assignments of all observations except observation $i$. Note that we use $n_k$ to denote the number of observations at component $k$ excluding observation $i$. The parameter $\alpha$ is the concentration parameter of the Dirichlet distribution used as prior over the mixing weights."
+
+# ╔═╡ d72cab2e-7c27-471e-af55-2c575230ca93
+md"### 9.3.1 Chinese Restaurant Process
+
+To obtain the Chinese restaurant process construction, we can now derive the conditional prior if $K \rightarrow \infty$.
+
+For $n_k>0$, we obtain:
+
+$p(z_i=k|z_{\neg i}, \alpha) = \frac{n_k }{ N - 1 + \alpha}$
+
+and for all infinitely many clusters that are empty (combined) we get:
+
+$p(z_i=k|z_{\neg i}, \alpha) = \frac{ \alpha }{ N - 1 + \alpha}$
+ 
+
+Those equations show that the conditional prior for component assignments is proportional to the number of such observations, meaning that the Chinese restaurant process has a rich get richer property.
+
+To get a better understanding of this property, we can plot the cluster choosen by for each new observation drawn from the conditional prior."
+
+# ╔═╡ 0813082a-36b3-4d9f-867a-5324281f244b
+begin
+	@show parentmodule(DirichletProcess)
+	@show parentmodule(ChineseRestaurantProcess)
+	@show parentmodule(StickBreakingProcess)
+end
+
+# ╔═╡ 0d525767-52eb-490c-b628-1a7db9ecea21
+md"### 9.3.1.1 Visualize the cluster growth given the growing data points"
+
+# ╔═╡ cff0108b-b745-4f2e-9f27-48e3624bbf0e
+begin
+	# Concentration parameter.
+	α = 1.0
+	
+	# Random measure, e.g. Dirichlet process.
+	rpm = DirichletProcess(α)
+	
+	# Cluster assignments for each observation.
+	z = Vector{Int}()
+	
+	# Maximum number of observations we observe.
+	Nmax = 500
+	
+	for i in 1:Nmax
+	    # Number of observations per cluster.
+	    K = isempty(z) ? 0 : maximum(z)
+	    nk = Vector{Int}(map(k -> sum(z .== k), 1:K))
+	
+	    # Draw new assignment.
+	    push!(z, rand(ChineseRestaurantProcess(rpm, nk)))
+	end
+end
+
+# ╔═╡ b6cf9057-1f2a-42cc-9233-6692806ee419
+@model function two_comp_mixture(x)
+    # Hyper-parameters
+    μ0 = 0.0
+    σ0 = 1.0
+
+    # Draw weights.
+    π1 ~ Beta(1, 1)
+    π2 = 1 - π1
+
+    # Draw locations of the components.
+    μ1 ~ Normal(μ0, σ0)
+    μ2 ~ Normal(μ0, σ0)
+
+    # Draw latent assignment.
+    z ~ Categorical([π1, π2])
+
+    # Draw observation from selected component.
+    if z == 1
+        x ~ Normal(μ1, σ0)
+    else
+        x ~ Normal(μ2, σ0)
+    end
+end
+
+# ╔═╡ c5c9bdaa-6e3b-46d9-b537-791a7c1739bf
+@gif for i in 1:Nmax
+    scatter(
+        collect(1:i),
+        z[1:i];
+        markersize=2,
+        xlabel="observation (i)",
+        ylabel="cluster (k)",
+        legend=false,
+    )
+end
+
+# ╔═╡ 28cbcd7a-bfb3-4f59-86fc-d5e84829da01
+nk=Vector{Int}(map(k -> sum(z .==k), 1:maximum(z) ))
+
+# ╔═╡ 65f761e5-5b59-4d87-89ae-a763591e63d9
+maximum(z)
+
+# ╔═╡ 4ef1c808-bc54-459e-a0c4-4928714eaa0b
+rand(ChineseRestaurantProcess(rpm, nk))
+
+# ╔═╡ a8393424-e097-4dd5-be88-24886798ffb0
+md"Further, we can see that the number of clusters is logarithmic in the number of observations and data points. This is a side-effect of the `rich-get-richer` phenomenon, i.e. we expect large clusters and thus the number of clusters has to be smaller than the number of observations.
+
+$E[K|N] \approx \alpha * log(1+\frac{N}{\alpha})$
+
+We can see from the equation that the concentration parameter $\alpha$ allows us to control the number of clusters formed *a priori*.
+
+In Turing we can implement an infinite Gaussian mixture model using the Chinese restaurant process construction of a Dirichlet process as follows:"
+
+# ╔═╡ 7c0c50dc-e376-4365-b2ec-eeb7f26722fd
+md"### 9.3.1.2 Test CRP on a infinite Gaussian Mixture Model"
+
+# ╔═╡ 48477352-5850-4291-8b99-e4a688811246
+@model function infiniteGMM(x, warn=true)
+    # Hyper-parameters, i.e. concentration parameter and parameters of H.
+    α = 0.5  # the smaller α is, the less clusters a priori.
+    μ0 = 0.0  # μ of Prior to draw Gaussian cluster mean
+    σ0 = 1.0  # σ of Prior to draw Gaussian cluster mean
+    σ1 = 1.0  # σ for each Gaussian cluster
+
+    # Define random measure, e.g. Dirichlet process.
+    rpm = DirichletProcess(α)
+
+    # The base distribution, to draw the mean value of all Gaussian distributions in the Dirichlet process.
+    H = Normal(μ0, σ0)
+
+    # Latent assignment.
+    z = zeros(Int, length(x)) # tzeros() = zeros()
+
+    # Locations of the infinitely many Gaussian clusters.
+    μ = zeros(Float64, 0)
+    # Number of clusters.
+    K = 0
+
+    for i in 1:length(x)
+
+        # Number of clusters.
+        #K = maximum(z)
+        nk = Vector{Int}(map(k -> sum(z .== k), 1:K))
+
+        # Draw the latent assignment.
+        z[i] ~ ChineseRestaurantProcess(rpm, nk)
+
+        # Create a new cluster?
+        if z[i] > K
+            K += 1
+            push!(μ, 0.0)
+
+            # Draw location of new cluster.
+            μ[z[i]] ~ H
+        end
+
+        # An observation that follows this distribution
+        x[i] ~ Normal(μ[z[i]], σ1)
+    end
+end
+
+
+# ╔═╡ 41a0c3b8-8975-4d69-88cf-6d076f5ad5f2
+tzeros(Int, 3)
+
+# ╔═╡ baf60493-ff2f-4e17-8314-7c7ebdfaf536
+md"We can now use Turing to infer the assignments of some data points. First, we will create some random data that comes from three clusters, with means of 0, -10, and 10, which is a bit easier than to infer 0, -5, 10."
+
+# ╔═╡ df4c8aa3-9961-44ca-b24f-0bf3f7e26d39
+begin 
+	# Generate some test data.
+	Random.seed!(1)
+	csize=100
+	data_gmm = vcat(randn(csize), randn(csize) .- 10, randn(csize) .+ 10)
+	@show size(data_gmm)
+	@show mean(data_gmm)
+	data_gmm .-= mean(data_gmm)
+	data_gmm /= std(data_gmm);
+	histogram(data_gmm, bins=20)
+end
+
+# ╔═╡ f3027ecf-4b95-4a76-b5cf-b572ca3eb050
+scatter(1:csize*3, data_gmm)
+
+# ╔═╡ 245f4489-1320-4502-a956-5f922e4fcf8e
+begin
+	# MCMC sampling
+	Random.seed!(2)
+	@time model_infini_GMM_CRP = infiniteGMM(data_gmm);
+	@time chain_infini_GMM_CRP = sample(model_infini_GMM_CRP, SMC(), 1500);
+end
+
+# ╔═╡ b551b54c-ab60-473a-89df-c7e9388cecd0
+begin
+	@time chain_infini_GMM_CRP_DF = DataFrame(chain_infini_GMM_CRP)
+	#@show first(chain_infini_GMM_CRP_DF,5)
+	last(chain_infini_GMM_CRP_DF, 5)
+end
+
+# ╔═╡ f6870036-a104-41a0-8b4f-a23d38b119d4
+begin
+	z_estimated = vec(chain_infini_GMM_CRP[1500, MCMCChains.namesingroup(chain_infini_GMM_CRP, :z),:].value)
+	scatter(1:csize*3, z_estimated)
+end
+
+# ╔═╡ ac4a1de3-8ac4-4acb-9a0e-d7f517253e50
+unique(z_estimated)
+
+# ╔═╡ d832417b-151f-4a0f-8084-6c9007c8614a
+function draw_cluster_no_in_chain(chain; burnin_iter=1, iterations=1000)    
+    # Extract the number of clusters for each sample of the Markov chain.
+    K = map(
+        t -> length(unique(vec(chain[t, MCMCChains.namesingroup(chain, :z), :].value))),
+        burnin_iter:iterations,
+    );
+
+    # Visualize the number of clusters.
+    s_of_K = scatter(burnin_iter:iterations, K; xlabel="Iteration", 
+        ylabel="Number of clusters", label="Chain 1")
+    h_of_K = histogram(K; xlabel="Number of clusters", legend=false)
+
+    plot(s_of_K, h_of_K, layout=(1,2), left_margin=5*Plots.mm, 
+        bottom_margin=5*Plots.mm, size=(1200,430) ) 
+end
+
+
+# ╔═╡ f875202b-5c14-4800-8624-af904d1b19a3
+@time draw_cluster_no_in_chain(chain_infini_GMM_CRP; burnin_iter=1, iterations=1500)
+
+# ╔═╡ a1198545-4cc6-420e-bc85-ddde4ba8ab3c
+md"### 9.3.2 Stick-breaking process
+
+
+$\beta_k \sim Beta(1,\alpha)$
+ 
+$\pi_k = \beta_k \Pi_{l=1}^{k-1} (1-\beta_{l})$
+ 
+$\theta^*_k \sim H$
+ 
+$G = \Sigma_{k=1}^{\infty}\pi_k \delta_{\theta_k^*}$
+ 
+"
+
+# ╔═╡ 8d269347-42a0-4ce6-8b07-1d065780eda1
+md"### 9.3.3 Size biased sampling"
+
+# ╔═╡ 3c6f3a86-84c2-4ef8-b520-a5804d053d86
+
+"""
+$(SIGNATURES)
+Arguments:
+- x: 1D data.
+- rpm: is a Random process measure. e.g. Dirichlet process.
+
+```julia
+rpm = DirichletProcess(0.5)
+```
+
+- Hyper-parameters, i.e. concentration parameter and parameters of H.
+
+"""
+@model function infiniteGMM_size_biased(x, rpm)
+	# The base distribution, to draw the mean value of all Gaussian distributions in the Dirichlet process.
+	H = Normal(0.0, 2)
+	
+	N = length(x)
+	# Latent assignment.
+	z = zeros(Int, N)  #was tzeros()
+
+	# Locations of the infinitely many clusters.
+	μ = zeros(Float64, 0)
+	
+	# probability weights for each class
+	J = zeros(Float64, N)
+
+	K = 0 
+	surplus=1.0
+	for i in 1:N
+		ps = vcat(J[1:K], surplus)
+		z[i] ~ Categorical(ps)
+
+		# Create a new cluster?
+		if z[i] > K
+			K += 1
+			push!(μ, 0.0)
+			# Assign a weight
+			J[K] ~ SizeBiasedSamplingProcess(rpm, surplus)
+			μ[K] ~ H
+			surplus -= J[K]
+		end
+
+		# An observation that follows this distribution
+		x[i] ~ Normal(μ[z[i]], 1)
+	end
+end
+
+
+# ╔═╡ c37b709c-bcf5-4229-a421-5b40cbda24f8
+
+begin
+	# MCMC sampling
+	Random.seed!(2)
+	@time model_size_biased = infiniteGMM_size_biased(data_gmm, DirichletProcess(0.5));
+	@time chain_infini_GMM_size_biased = sample(model_size_biased, SMC(), 1000);
+end
+
+# ╔═╡ dd7592d0-0031-4978-8392-80d31d672f21
+draw_cluster_no_in_chain(chain_infini_GMM_size_biased)
+
+# ╔═╡ 4d22ab2c-88af-4349-8a10-fd48e83c835d
+begin
+	z_estimated_2 = vec(chain_infini_GMM_size_biased[1000, MCMCChains.namesingroup(chain_infini_GMM_size_biased, :z),:].value)
+	scatter(1:300, z_estimated_2)
+end
+
+# ╔═╡ fc893fa0-77f0-44fb-8071-b5b3c5d64697
+
+
 # ╔═╡ cc9b2c50-e5d0-4764-8089-95804c5a1dc7
-md"## 9 Visualize beta distributions"
+md"## 10 Visualize beta distributions"
 
 # ╔═╡ 4a05157d-1792-4f01-8b80-0639aac47998
 plot(x -> pdf(Beta(1, 5), x), 
@@ -573,12 +938,14 @@ PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
 FillArrays = "1a297f60-69ca-5386-bcde-b61e274b549b"
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Markdown = "d6f4376e-aef5-505a-96c1-9c027394607a"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
@@ -588,8 +955,10 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 [compat]
 DataFrames = "~1.6.1"
 Distributions = "~0.25.107"
+DocStringExtensions = "~0.9.3"
 DrWatson = "~2.14.1"
 FillArrays = "~1.9.3"
+Plots = "~1.40.2"
 PlutoUI = "~0.7.58"
 StatsPlots = "~0.15.7"
 Turing = "~0.30.7"
@@ -601,7 +970,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.2"
 manifest_format = "2.0"
-project_hash = "c218af81588402b50376d9de69e0cbc0f9042b8a"
+project_hash = "b6a11094c1286beb263c9643590a12f49d12d8e4"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "016833eb52ba2d6bea9fcb50ca295980e728ee24"
@@ -2842,6 +3211,7 @@ version = "1.4.1+1"
 
 # ╔═╡ Cell order:
 # ╟─c1836feb-ce9d-4e26-aa25-7e28dd55506e
+# ╠═36c62876-1ab7-438b-8d5e-16ee391a11eb
 # ╠═ff1dc8d2-ecbc-11ee-022e-653b5473f25a
 # ╠═5c25b00d-5c84-498d-b439-de3a59198ef2
 # ╠═49d67176-6130-4bc0-bd99-2f5a43e20b5d
@@ -2920,6 +3290,41 @@ version = "1.4.1+1"
 # ╠═14fd3f37-cf8b-4867-903f-36aa505b7683
 # ╠═706bb0da-9dff-47c8-bd42-6096fa7e0025
 # ╠═5e68050f-758f-4380-9fbe-f4cae31e0754
+# ╟─8f428c07-e87e-4642-be5e-2347a25a86f4
+# ╠═c4065dfe-55c5-42a0-88bc-9231125757b9
+# ╠═b6cf9057-1f2a-42cc-9233-6692806ee419
+# ╠═af8227a8-3249-43dd-8bc6-0f08a05e81ef
+# ╠═4756ab6b-fc05-40ca-9759-c6f1d0b78ff7
+# ╟─9975d122-59e6-4513-ad82-7f5a7c37bbe4
+# ╠═d72cab2e-7c27-471e-af55-2c575230ca93
+# ╠═0813082a-36b3-4d9f-867a-5324281f244b
+# ╠═0d525767-52eb-490c-b628-1a7db9ecea21
+# ╠═cff0108b-b745-4f2e-9f27-48e3624bbf0e
+# ╠═8849387c-f4b0-47f3-9061-e286e23edbde
+# ╠═c5c9bdaa-6e3b-46d9-b537-791a7c1739bf
+# ╠═28cbcd7a-bfb3-4f59-86fc-d5e84829da01
+# ╠═65f761e5-5b59-4d87-89ae-a763591e63d9
+# ╠═4ef1c808-bc54-459e-a0c4-4928714eaa0b
+# ╟─a8393424-e097-4dd5-be88-24886798ffb0
+# ╠═7c0c50dc-e376-4365-b2ec-eeb7f26722fd
+# ╠═48477352-5850-4291-8b99-e4a688811246
+# ╠═41a0c3b8-8975-4d69-88cf-6d076f5ad5f2
+# ╟─baf60493-ff2f-4e17-8314-7c7ebdfaf536
+# ╠═df4c8aa3-9961-44ca-b24f-0bf3f7e26d39
+# ╠═f3027ecf-4b95-4a76-b5cf-b572ca3eb050
+# ╠═245f4489-1320-4502-a956-5f922e4fcf8e
+# ╠═b551b54c-ab60-473a-89df-c7e9388cecd0
+# ╠═f6870036-a104-41a0-8b4f-a23d38b119d4
+# ╠═ac4a1de3-8ac4-4acb-9a0e-d7f517253e50
+# ╠═d832417b-151f-4a0f-8084-6c9007c8614a
+# ╠═f875202b-5c14-4800-8624-af904d1b19a3
+# ╟─a1198545-4cc6-420e-bc85-ddde4ba8ab3c
+# ╟─8d269347-42a0-4ce6-8b07-1d065780eda1
+# ╠═3c6f3a86-84c2-4ef8-b520-a5804d053d86
+# ╠═c37b709c-bcf5-4229-a421-5b40cbda24f8
+# ╠═dd7592d0-0031-4978-8392-80d31d672f21
+# ╠═4d22ab2c-88af-4349-8a10-fd48e83c835d
+# ╠═fc893fa0-77f0-44fb-8071-b5b3c5d64697
 # ╟─cc9b2c50-e5d0-4764-8089-95804c5a1dc7
 # ╠═4a05157d-1792-4f01-8b80-0639aac47998
 # ╠═b1011fa7-ea8a-4c0c-935e-2a57056612b1
