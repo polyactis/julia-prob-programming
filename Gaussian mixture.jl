@@ -24,6 +24,19 @@ end
 # ╔═╡ ba516130-d542-46fe-ac71-cccdb89eb783
 md"# Gaussian Mixture"
 
+# ╔═╡ 82f1d8d8-77b7-4a41-9539-06451d30fecb
+#    margin-left: 1%;
+#    margin-right: 5%;
+html"""<style>
+main {
+	margin: 0 auto;
+    max-width: 90%;
+	padding-left: max(50px, 1%);
+    padding-right: max(253px, 10%);
+	# 253px to accomodate TableOfContents(aside=true)
+}
+"""
+
 # ╔═╡ 3b933d9b-f041-4cf6-b8e0-a45961a93ea6
 begin
   PlutoUI.TableOfContents()
@@ -85,8 +98,8 @@ md"## 1.2 Establish Turing model"
 end
 
 # ╔═╡ 0cb6e3d6-c981-4d1d-a634-1eae679cd008
-md"## 1.3 Fit the model via Particle Gibbs and HMC
-- How were two samplers used simutaneously?"
+md"## 1.3 Sampling by PG+HMC
+- PG for the discrete K. HMC for continuous μ and w."
 
 # ╔═╡ d68e28d5-8c8a-4495-9368-835cd9bcab8c
 begin
@@ -115,7 +128,7 @@ chains.value
 
 # ╔═╡ 4dd687c8-9bee-4594-bad5-063ad2f97885
 #last iteration of the 3rd chain of 60 k values (cluster assignments)
-histogram(chains.value[iter=100][5:64,3])
+histogram(chains.value[iter=100][5:64,3], bins=20)
 
 # ╔═╡ 4e944e73-d69c-477a-a027-840540c57797
 chains.info
@@ -143,13 +156,33 @@ begin
 end
 
 # ╔═╡ 65870be6-9413-4491-9e54-9a90e37f7f66
-md"## 1.4 Fit the model with NUTS()"
+md"## 1.4 Sampling by NUTS(). Failed due to ForwardDiff error.
+-  k is discrete, so NUTS/HMC sampler will fail (no gradient)."
 
 # ╔═╡ f7d0a6e0-eac9-429d-a83f-f4d2f926166b
-@time chains_NUTS = sample(model, NUTS(), 1000) 
+@time chains_NUTS = sample(model, NUTS(), 1000)
 
 # ╔═╡ fcf81a95-3646-40d3-8f7f-5298b270e50f
 plot(chains_NUTS; colordim=:parameter, legend=true)
+
+# ╔═╡ 531b4a23-fc56-4696-8823-dbc87114e441
+md"## 1.5 Sampling via PG+NUTS."
+
+# ╔═╡ 38dadff9-d400-4d79-b2b6-a7d47871d3fe
+@time chains_PG_NUTS = sample(model, Gibbs(PG(100, :k), NUTS(200, 0.65, init_ϵ=0.003, :μ, :w)), 100)
+ 
+
+# ╔═╡ c6b7b702-fa16-4128-9135-f39a7d5b0922
+plot(chains_PG_NUTS[["μ[1]", "μ[2]", "w[1]", "w[2]"]]; colordim=:parameter, legend=true)
+
+# ╔═╡ b8a08221-2d62-4496-be08-01055ae1288b
+chains_PG_NUTS.value
+
+# ╔═╡ 51ec7ad0-6d8b-489a-a9db-15d87781a596
+begin
+	scatter(x[1, :], x[2, :]; marker_z=chains_PG_NUTS.value[iter=100][5:64,1])
+	# markerfacecolor=map(color_func, color_vec), title="Synthetic Dataset")
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2402,6 +2435,7 @@ version = "1.4.1+1"
 
 # ╔═╡ Cell order:
 # ╟─ba516130-d542-46fe-ac71-cccdb89eb783
+# ╠═82f1d8d8-77b7-4a41-9539-06451d30fecb
 # ╠═de592ca4-e7ec-11ee-34f2-9ffb60ed4dcf
 # ╠═3b933d9b-f041-4cf6-b8e0-a45961a93ea6
 # ╠═a53f3f88-edb8-41ec-b2fa-5a226fd61b0a
@@ -2426,5 +2460,10 @@ version = "1.4.1+1"
 # ╟─65870be6-9413-4491-9e54-9a90e37f7f66
 # ╠═f7d0a6e0-eac9-429d-a83f-f4d2f926166b
 # ╠═fcf81a95-3646-40d3-8f7f-5298b270e50f
+# ╟─531b4a23-fc56-4696-8823-dbc87114e441
+# ╠═38dadff9-d400-4d79-b2b6-a7d47871d3fe
+# ╠═c6b7b702-fa16-4128-9135-f39a7d5b0922
+# ╠═b8a08221-2d62-4496-be08-01055ae1288b
+# ╠═51ec7ad0-6d8b-489a-a9db-15d87781a596
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
