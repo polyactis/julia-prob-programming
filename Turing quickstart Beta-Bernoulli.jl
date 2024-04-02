@@ -158,6 +158,43 @@ md"- Is there an analytic solution to this? Yes, Beta-Binomial.
 # ╔═╡ 42ed313f-2919-4463-8c76-1a15363ebd60
 md"### 4.1 Declare our Bayesian model and Monte Carlo with a HMC sampler"
 
+# ╔═╡ 6bfce2a4-838e-47eb-86a9-35559594ea90
+# Declare our Bayesian model，p ~ beta(1,1)， x ~ Bernoilli(p)
+@model function coinflip(x)
+    # Our prior belief about the probability of heads in a coin.
+    p ~ Beta(1, 1)
+
+    # The number of observations.
+    N = length(x)
+    for n in 1:N
+        # Heads or tails of a coin are drawn from a Bernoulli distribution.
+        x[n] ~ Bernoulli(p)
+    end
+end
+
+# ╔═╡ 0bcb19ff-193b-49d1-a7f2-1225288ee7ec
+begin
+	# Settings of the Hamiltonian Monte Carlo (HMC) sampler.
+	iterations = 1000
+	ϵ = 0.05
+	τ = 10
+	
+	# Start sampling.
+	@time chain = sample(coinflip(data), HMC(ϵ, τ), iterations)
+	display(chain)
+	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
+	histogram(chain[:p])
+end
+
+# ╔═╡ c343aeb9-4fad-46ec-8df5-ad47ea3737fc
+begin
+	# Using NUTS as sampler
+	@time chain_NUTS = sample(coinflip(data), NUTS(), iterations)
+	display(chain_NUTS)
+	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
+	histogram(chain_NUTS[:p])
+end
+
 # ╔═╡ 70fcc963-418a-4899-a91c-495ff27a7c27
 md"#### 4.1.1 The posterior of p is max at $ p=0.4311$, almost same as MLE. Not 0.5!
 Because:
@@ -179,11 +216,55 @@ end
 # ╔═╡ 4ca651ec-4586-49f2-a834-c6b0eb40ecbf
 md"### 4.2.1 sample using the same model but with 10X iterations"
 
+# ╔═╡ 81f972c6-ce66-4ab5-915a-4b1c6501f672
+begin
+	# sampling using the same model but more iterations
+	#ϵ=0.05, τ=10
+	@time chain_10X_HMC = sample(coinflip(data2), HMC(0.05, 10), 10_000)
+	display(chain_10X_HMC)
+	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
+	histogram(chain_10X_HMC[:p])
+end
+
 # ╔═╡ 7479b86b-bdad-45ea-a593-417a59cbb834
 md"### 4.2.2 same model, but using the NUTS sampler (default parameters)"
 
+# ╔═╡ 92251c31-7c79-4916-a192-1400f5225ea3
+begin
+	# Start sampling.
+	@time chain_10X_NUTS = sample(coinflip(data2), NUTS(), 10_000)
+	display(chain_10X_NUTS)
+	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
+	histogram(chain_10X_NUTS[:p])
+end
+
 # ╔═╡ 08163980-3f63-4c40-8bc8-677b00f66010
 md"### 4.3 Modify the prior to alter the posterior"
+
+# ╔═╡ 89f3522f-7b26-4880-9645-d3ad66f4838b
+# Declare our Bayesian model，p ~ beta， x ~ Bernoilli(p)
+# But let's modify the \alpha and \beta of the prior distribution.
+
+@model function coinflip_prior_around_0_5(x)
+    # Our prior belief about the probability of heads in a coin.
+    p ~ Beta(100, 100)
+
+    # The number of observations.
+    N = length(x)
+    for n in 1:N
+        # Heads or tails of a coin are drawn from a Bernoulli distribution.
+        x[n] ~ Bernoulli(p)
+    end
+end
+
+# ╔═╡ 96c363fd-7b02-4f56-b80b-64ae4eba2b7d
+begin
+	# Start sampling.
+	@time chain_strong_beta_NUTS = sample(coinflip_prior_around_0_5(data), NUTS(), 10_000)
+	display(chain_strong_beta_NUTS)
+	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
+	histogram(chain_strong_beta_NUTS[:p])
+end
 
 # ╔═╡ bcf0fb30-a7c1-42b4-a600-1d22d1337bd2
 md"### 4.3.1 Conclusion
@@ -228,87 +309,6 @@ begin
 	    end
 	end
 	
-end
-
-# ╔═╡ 6bfce2a4-838e-47eb-86a9-35559594ea90
-# Declare our Bayesian model，p ~ beta(1,1)， x ~ Bernoilli(p)
-@model function coinflip(x)
-    # Our prior belief about the probability of heads in a coin.
-    p ~ Beta(1, 1)
-
-    # The number of observations.
-    N = length(x)
-    for n in 1:N
-        # Heads or tails of a coin are drawn from a Bernoulli distribution.
-        x[n] ~ Bernoulli(p)
-    end
-end
-
-# ╔═╡ 0bcb19ff-193b-49d1-a7f2-1225288ee7ec
-begin
-	# Settings of the Hamiltonian Monte Carlo (HMC) sampler.
-	iterations = 1000
-	ϵ = 0.05
-	τ = 10
-	
-	# Start sampling.
-	@time chain = sample(coinflip(data), HMC(ϵ, τ), iterations)
-	display(chain)
-	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
-	histogram(chain[:p])
-end
-
-# ╔═╡ c343aeb9-4fad-46ec-8df5-ad47ea3737fc
-begin
-	# Using NUTS as sampler
-	@time chain_NUTS = sample(coinflip(data), NUTS(), iterations)
-	display(chain_NUTS)
-	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
-	histogram(chain_NUTS[:p])
-end
-
-# ╔═╡ 81f972c6-ce66-4ab5-915a-4b1c6501f672
-begin
-	# sampling using the same model but more iterations
-	#ϵ=0.05, τ=10
-	@time chain_10X_HMC = sample(coinflip(data2), HMC(0.05, 10), 10_000)
-	display(chain_10X_HMC)
-	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
-	histogram(chain_10X_HMC[:p])
-end
-
-# ╔═╡ 92251c31-7c79-4916-a192-1400f5225ea3
-begin
-	# Start sampling.
-	@time chain_10X_NUTS = sample(coinflip(data2), NUTS(), 10_000)
-	display(chain_10X_NUTS)
-	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
-	histogram(chain_10X_NUTS[:p])
-end
-
-# ╔═╡ 89f3522f-7b26-4880-9645-d3ad66f4838b
-# Declare our Bayesian model，p ~ beta， x ~ Bernoilli(p)
-# But let's modify the \alpha and \beta of the prior distribution.
-
-@model function coinflip_prior_around_0_5(x)
-    # Our prior belief about the probability of heads in a coin.
-    p ~ Beta(100, 100)
-
-    # The number of observations.
-    N = length(x)
-    for n in 1:N
-        # Heads or tails of a coin are drawn from a Bernoulli distribution.
-        x[n] ~ Bernoulli(p)
-    end
-end
-
-# ╔═╡ 96c363fd-7b02-4f56-b80b-64ae4eba2b7d
-begin
-	# Start sampling.
-	@time chain_strong_beta_NUTS = sample(coinflip_prior_around_0_5(data), NUTS(), 10_000)
-	display(chain_strong_beta_NUTS)
-	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
-	histogram(chain_strong_beta_NUTS[:p])
 end
 
 # ╔═╡ 8c594c78-3936-421f-9c2a-3d5cf7360459
@@ -579,6 +579,31 @@ md"## 9 Mixture model"
 md"### 9.1 Two-component mixture model
 - https://turinglang.org/dev/tutorials/06-infinite-mixture-model/"
 
+# ╔═╡ b6cf9057-1f2a-42cc-9233-6692806ee419
+@model function two_comp_mixture(x)
+    # Hyper-parameters
+    μ0 = 0.0
+    σ0 = 1.0
+
+    # Draw weights.
+    π1 ~ Beta(1, 1)
+    π2 = 1 - π1
+
+    # Draw locations of the components.
+    μ1 ~ Normal(μ0, σ0)
+    μ2 ~ Normal(μ0, σ0)
+
+    # Draw latent assignment.
+    z ~ Categorical([π1, π2])
+
+    # Draw observation from selected component.
+    if z == 1
+        x ~ Normal(μ1, σ0)
+    else
+        x ~ Normal(μ2, σ0)
+    end
+end
+
 # ╔═╡ af8227a8-3249-43dd-8bc6-0f08a05e81ef
 md"### 9.2  Finite Mixture Model
 
@@ -655,31 +680,6 @@ begin
 	    # Draw new assignment.
 	    push!(z, rand(ChineseRestaurantProcess(rpm, nk)))
 	end
-end
-
-# ╔═╡ b6cf9057-1f2a-42cc-9233-6692806ee419
-@model function two_comp_mixture(x)
-    # Hyper-parameters
-    μ0 = 0.0
-    σ0 = 1.0
-
-    # Draw weights.
-    π1 ~ Beta(1, 1)
-    π2 = 1 - π1
-
-    # Draw locations of the components.
-    μ1 ~ Normal(μ0, σ0)
-    μ2 ~ Normal(μ0, σ0)
-
-    # Draw latent assignment.
-    z ~ Categorical([π1, π2])
-
-    # Draw observation from selected component.
-    if z == 1
-        x ~ Normal(μ1, σ0)
-    else
-        x ~ Normal(μ2, σ0)
-    end
 end
 
 # ╔═╡ c5c9bdaa-6e3b-46d9-b537-791a7c1739bf

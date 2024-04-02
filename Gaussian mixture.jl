@@ -60,7 +60,7 @@ begin
 	
 	# We draw the data points.
 	N = 60
-	x = rand(mixturemodel, N)
+	@time x = rand(mixturemodel, N)
 end
 
 # ╔═╡ 2a845a4e-4c40-490d-9182-a64f30227d42
