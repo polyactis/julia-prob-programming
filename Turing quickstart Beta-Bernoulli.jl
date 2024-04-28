@@ -22,7 +22,7 @@ begin
 	using Turing
 
 	# Import all libraries.
-	using Turing, Distributions, DataFrames
+	using DataFrames
 	#DirichletProcess, ChineseRestaurantProcess, StickBreakingProcess
 	using Turing.RandomMeasures
 	# DocStringExtensions provides $(SIGNATURES)
@@ -31,18 +31,8 @@ begin
 	Random.seed!(3)
 end
 
-# ╔═╡ 660853b1-0c41-466d-aa5d-49422ff076a8
-begin
-	x = "foo"
-	println("$x $(x) ",  "haha")
-	using Printf
-	@sprintf("%s %s", "foo", "bar")
-end
-
-# ╔═╡ 8849387c-f4b0-47f3-9061-e286e23edbde
-using Plots
-
-# Plot the cluster assignments over time
+# ╔═╡ eb3dd1f4-2266-41f5-9191-343fe5133f7e
+using DynamicPPL, Printf
 
 # ╔═╡ c1836feb-ce9d-4e26-aa25-7e28dd55506e
 md"# Turing quickstart Beta-Bernoulli"
@@ -68,23 +58,296 @@ end
 # ╔═╡ ea83b213-db5e-4a18-a274-51aeb86c14a8
 versioninfo()
 
+# ╔═╡ 660853b1-0c41-466d-aa5d-49422ff076a8
+begin
+	x = "foo"
+	println("$x $(x) ",  "haha")
+	#using Printf
+	@sprintf "%s %s %8.3f" "foo" "bar" 34.567
+end
+
 # ╔═╡ 5964c6e8-ad85-4f20-8eee-85b1b6673546
-md"## Turing.jl
+md"# 1. Turing.jl
 - https://turinglang.org/
+- https://turinglang.org/DynamicPPL.jl/stable/
 - https://github.com/TuringLang/Turing.jl"
 
 
+# ╔═╡ 9fa3c45d-458f-48e7-a652-d3c288fd94d1
+@model function gdemo(n)
+    μ ~ Normal(0, 1)
+    x ~ MvNormal(Fill(μ, n), I)
+end
+
+# ╔═╡ 82d1cb2f-b5ee-42d1-882d-71ab6e571268
+begin
+	Random.seed!(1776)
+	dataset1_1 = randn(100)
+end
+
+# ╔═╡ 54a605e1-525f-4cd2-ab32-b689d6e0d668
+Random.seed!(16); dataset1_2 = randn(1)
+
+# ╔═╡ 27c646e3-1fd7-4001-ad6c-d60efde2c870
+md"## 1.1 Conditioning and Deconditioning
+
+Bayesian models can be transformed with two main operations, conditioning and deconditioning (also known as marginalization).
+
+Conditioning takes a variable and fixes its value as known. We do this by passing a model and a collection of conditioned variables to | or its alias condition."
+
+# ╔═╡ 4469f618-932e-4fa1-8dc2-f5c2f365072c
+md"### 1.1.1 `model1_1`: gdemo conditioned on `dataset1_1` and μ=0
+
+- This conditional distribution contains no random variables to draw. Drawing from it returns empty.
+- This model contains both data and parameter values."
+
+# ╔═╡ 7d533ab7-d258-489d-85f9-615e987badfc
+m1_1 = gdemo(length(dataset1_1)) | (x=dataset1_1, μ=0)
+
+# ╔═╡ e3819f0c-c20e-420c-92da-065c3480ed3a
+begin
+	using DataStructures
+	
+	Random.seed!(124)
+	@show sample_dict = rand(OrderedDict, m1_1)
+	logjoint(m1_1, sample_dict)
+end
+
+# ╔═╡ 57f154ad-72f6-4371-be3a-59c0fe415749
+md"This operation can be reversed by applying decondition"
+
+# ╔═╡ 74f6eba0-f7b8-49cd-98bc-c3ceabc7245b
+DynamicPPL.decondition(m1_1)
+
+# ╔═╡ 81941af8-8607-4b5c-8e2d-1d7a182f8725
+md"- Drawing from it returns empty"
+
+# ╔═╡ 6fa3cdea-6712-4f3e-838c-76e5b178cf86
+rand(m1_1)
+
+# ╔═╡ dabdffc8-75ff-4725-8e5d-944eedd90a7f
+md"We often want to calculate the (unnormalized) probability density for an event. This probability might be a prior, a likelihood, or a posterior (joint) density. DynamicPPL provides convenient functions for this. For example, we can calculate the joint probability of a set of samples (here drawn from the prior) with logjoint:"
+
+# ╔═╡ fab3efeb-8083-413a-9490-6d3b81ce07d9
+begin
+	Random.seed!(124)
+	sample1_1 = rand(m1_1)
+	logjoint(m1_1, sample1_1)
+end
+
+# ╔═╡ 5a0bf169-9fc9-4415-9181-04b61d8b4b23
+sample1_1
+
+# ╔═╡ 111e81e5-fcc3-4362-b0f8-b8ad78960e35
+md"For models with many variables `rand(model)` can be prohibitively slow since it returns a `NamedTuple` of samples from the prior distribution of the unconditioned variables. We recommend working with samples of type DataStructures.OrderedDict in this case:
+"
+
+# ╔═╡ 0e038cf7-fd32-426b-9466-1a1e96c59cb8
+sample_dict
+
+# ╔═╡ 32759c69-5c27-4caf-9c38-f521dafff54f
+md"- If sample1_1/sample_dict is empty, what are logjoint and etc. calculating?
+- It is computing the joint of the data & parameters already embedded in the model."
+
+# ╔═╡ 372d1f9f-0ec7-40a2-b0ae-4559661e67da
+begin
+	@show logjoint(m1_1, sample1_1)
+	@show loglikelihood(m1_1, sample1_1)
+	@show logprior(m1_1, sample1_1)
+	logjoint(m1_1, sample1_1) ≈ loglikelihood(m1_1, sample1_1) + logprior(m1_1, sample1_1)
+end
+
+# ╔═╡ 7947df07-6e0d-4e3d-99ec-9c10c3289459
+@time logjoint(m1_1, sample_dict)
+
+# ╔═╡ 31b126e9-cb9d-4ef1-b985-9a1f85afa3fe
+m1_1_1 = gdemo(length(dataset1_2)) | (x=dataset1_2, μ=15)
+
+# ╔═╡ 4b930e50-c33c-428a-b398-886696c2a711
+begin
+	@show s1_1_1 = rand(m1_1_1)
+	@show logjoint(m1_1_1, s1_1_1)
+	@show loglikelihood(m1_1_1, s1_1_1)
+	@show logprior(m1_1_1, s1_1_1)
+end
+
+# ╔═╡ 6c1304d0-59d6-4824-ba65-07e6374896c5
+md"Sometimes it is helpful to define convenience functions for conditioning on some variable(s). For instance, in this example we might want to define a version of gdemo that conditions on one observation of x:"
+
+# ╔═╡ 1fbf92fb-8ca1-4b7e-b4ae-da3bfa617241
+# this function is essentially same as gdemo2.
+gdemo_x(x::AbstractVector{<:Real}) = gdemo(length(x)) | (; x)
+
+# ╔═╡ 002ad479-3c77-456f-84bf-c5716f6787c6
+md"### 1.1.2 Correct syntax to define a conditional distribution with a NamedTuple"
+
+# ╔═╡ 5cbf5330-f2bd-42e2-8fc6-cf7544cd5ffd
+Random.seed!(124); rand(gdemo(length(dataset1_1)) | (x=dataset1_1,) )
+
+# ╔═╡ 4020291d-1b51-4891-9f7b-222e8ffc029d
+Random.seed!(124); rand(gdemo(length(dataset1_1)) | (;x=dataset1_1,) )
+
+# ╔═╡ 3bee11f3-b76c-4d7c-818c-e164431aabfd
+Random.seed!(124); rand(gdemo(length(dataset1_1)) | (;x=dataset1_1) )
+
+# ╔═╡ 73731e6e-fd65-4891-9e0a-87f4b6da81d3
+md"Following syntax is wrong in defining a conditional distribution.
+
+- `(x=dataset1_1)` is not a NamedTuple. It defines a variable named x.
+
+```julia
+Random.seed!(124) ; rand(gdemo(length(dataset1_1)) | (x=dataset1_1) )
+```
+"
+
+# ╔═╡ 55af0de3-caa3-4968-8ce8-d1fe91b47ef8
+md"### 1.1.3 Sample from a fake conditional distribution (a full distribution in fact)
+
+The following is NOT a conditional distribution as dataset1_1 is not a symbol in the model.
+It effectively is the full distribution.
+Check the sampling result in the next block.
+"
+
+# ╔═╡ fd73f727-f8ff-43d5-af4f-9e1fbd235f04
+m1_3 = gdemo(length(dataset1_1)) | (; dataset1_1)
+
+# ╔═╡ 2afab592-b139-42cb-b39c-de434e5f58f7
+ rand(m1_3)
+
+# ╔═╡ 2b66f8df-d211-4e2a-83e3-978b94e85aaf
+md"### 1.1.4 Sample μ from gdemo() conditioned on an x.
+
+- This conditional distribution of μ is NOT μ posterior, but the prior distribution.
+- Evidenced from the μ histogram."
+
+# ╔═╡ 8f5abeff-18ef-4ca4-b5d9-504d8fb45a67
+dataset1_2
+
+# ╔═╡ 4fb0c6df-1a26-4348-9980-84897359f5da
+m1_4 = gdemo(length(dataset1_2)) | (;x=dataset1_2 )
+
+# ╔═╡ 6daade07-f776-406b-9663-a8e45b7c24dd
+@time rand(OrderedDict, m1_4)
+
+# ╔═╡ 0ed3ce6b-7d5f-422b-b448-f0fa7858cc78
+@time rand(m1_4)
+
+# ╔═╡ 8ae0e56a-91b4-48ef-8a01-c314b5522805
+rand(OrderedDict, m1_4).vals[1]
+
+# ╔═╡ b72bda77-35ca-48da-adf7-957a6cd5f3fe
+n_samples = 200
+
+# ╔═╡ 543c7816-6a4c-4b1b-a6da-e2daf7c9fb6b
+@time begin
+	# draw μ repeatedly and draw a histogram
+	μ_posterior_vec = Vector{Float64}(undef, n_samples)
+	for i ∈ 1:n_samples
+		sample_dict = rand(OrderedDict, m1_4)
+		μ_posterior_vec[i] = sample_dict.vals[1]
+	end
+	μ_posterior_vec
+end
+
+# ╔═╡ 451a6ed3-2da7-4705-af5e-af22e86889fe
+histogram(μ_posterior_vec, xlabel="μ|x", title="x=$(dataset1_2)")
+
+# ╔═╡ 9a9eb504-15d8-41f0-8442-80abc41c0bb5
+md"### 1.1.5 Sample x from gdemo() conditioned on an μ=15.
+
+- This truly is a conditional distribution, evidenced by the histogram of sampled x"
+
+# ╔═╡ eb11a3f4-4388-49d3-b6cd-72acad34ac9a
+m1_5 = gdemo(1) | (;μ=15)
+
+# ╔═╡ 677f2041-eedc-4428-9f47-f884f787a24d
+rand(OrderedDict, m1_5).vals[1][1]
+
+# ╔═╡ b9ebc807-e102-441b-ac4e-b11646b79c53
+@time begin
+	# draw repeatedly and draw a histogram
+	x_posterior_vec = Vector{Float64}(undef, n_samples)
+	for i ∈ 1:n_samples
+		sample_dict = rand(OrderedDict, m1_5)
+		x_posterior_vec[i] = sample_dict.vals[1][1]
+	end
+	x_posterior_vec
+end
+
+# ╔═╡ a01ebda4-5a22-4340-a070-0653ed24a1a4
+histogram(x_posterior_vec, xlabel="x|μ", title="μ=15")
+
+# ╔═╡ 9f9c93df-8c4e-4d7b-90d6-92b575590db2
+md"- likelihood and prior are **reversed** due to x not being the argument of gdemo()"
+
+# ╔═╡ 69fc5ce5-ae8b-47aa-9305-16d85d6a6c37
+begin
+	@show logjoint(m1_5, (;x=dataset1_2))
+	@show loglikelihood(m1_5, (;x=dataset1_2))
+	@show logprior(m1_5, (x=dataset1_2,))
+	logjoint(m1_5, (;x=dataset1_2)) ≈ loglikelihood(m1_5, (;x=dataset1_2)) + logprior(m1_5, (x=dataset1_2,))
+end
+
+# ╔═╡ fcea061b-45f1-4b20-b5bf-875b95be82ec
+md"- likelihood of x given μ=15"
+
+# ╔═╡ 2a14e9bc-9585-4f9f-973d-9f9c93579b33
+logpdf(Normal(15,1), 0.717)
+
+# ╔═╡ 083af0fb-75b9-435f-a2cb-ddbfada1a169
+md"- prior of μ=15 given μ ∼ N(0,1)"
+
+# ╔═╡ 8682551b-137b-415a-aeb4-e7f644979089
+logpdf(Normal(0,1), 15)
+
+# ╔═╡ 4faa2266-761e-436f-8bfe-bd9b7472a17b
+let
+	@show logjoint(gdemo(1), (;x=dataset1_2, μ=15))
+	@show loglikelihood(gdemo(1), (;x=dataset1_2, μ=15))
+	@show logprior(gdemo(1), (x=dataset1_2, μ=15))
+end
+
+# ╔═╡ 958da451-d7ee-48cc-b5f8-22a884cf085c
+md"- Likelihood=0!
+- Prior = Joint = Likelihood of x + prior of μ."
+
+# ╔═╡ 65c7b570-3d2d-4d8f-b024-829bdec63f7f
+md"### 1.1.6 gdemo2(): x(observations) as input argument"
+
+# ╔═╡ d443a479-0f08-4275-8ba2-87b697a8a738
+@model function gdemo2(x)
+    μ ~ Normal(0, 1)
+	x ~ MvNormal(Fill(μ, length(x)), I)
+end
+
+# ╔═╡ d3d93b48-a28e-4d5a-8183-e831fb584d4b
+let
+	@show logjoint(gdemo2([0.717]), (;x=dataset1_2, μ=15))
+	@show loglikelihood(gdemo2([0.717]), (;x=dataset1_2, μ=15))
+	@show logprior(gdemo2([0.717]), (x=dataset1_2, μ=15))
+end
+
+# ╔═╡ ea574478-70fc-436e-a8f1-4bd5fb4b2e18
+md"- Likelihood and prior are now correct."
+
+# ╔═╡ 586de38c-3293-4c1b-9fdd-0fc810a1e1c8
+let
+	@show logjoint(gdemo2([0.717]), (;μ=15))
+	@show loglikelihood(gdemo2([0.717]), (; μ=15))
+	@show logprior(gdemo2([0.717]), ( μ=15,))
+end
+
 # ╔═╡ 132e9d0f-06fb-4b23-bdc3-3577c90dabbc
-md"## 2. The Problem: Coin flipping
+md"# 2. The Problem: Coin flipping
 
 Flip a coin. A random variable x = 1 if the coin is head up. x=0 if the coin is tail up.
 
-### 2.1 Question
+## 2.1 Question
 - Input: a sequence of observed x.
 - Output: what is the p(head up) of the coin?"
 
 # ╔═╡ e027a63d-c856-4299-b1ca-4124864884de
-md"### 2.2 Input: flip 100 times"
+md"## 2.2 Input: flip 100 times"
 
 # ╔═╡ ed092bf4-4b9a-4e1d-b65d-f1d245eb7f3f
 begin
@@ -103,15 +366,13 @@ begin
 end
 
 # ╔═╡ 3109f2ae-54ad-45b7-b260-3ffcc025bdaf
-md"## 3 Frequentist/Likelihood approach
+md"# 3 Frequentist/Likelihood approach
 
 p is an unknown parameter to be solved.
 
+xᵢ ∼ Bernoulli(p)
 
-$x_i \sim Bernoulli(p)$
-
-
-The MLE (maximum likelihood estimator) is $\hat p=\frac{\sum_{i=1}^{i=N} x_i }{N}$ and why?
+The MLE (maximum likelihood estimator) is p̂ = ∑ᵢ₌₁ⁱ⁼ᴺ xᵢ/N and why?
 
 - What is the difference between likelihood and probability? What is MLE?
 - Why most estimators we know/use are MLE estimators?
@@ -126,7 +387,7 @@ md"For any model (Likelihood or Bayesian):
 "
 
 # ╔═╡ 79851d71-69e1-4e57-9e2c-fb646a026f80
-md"### 3.1 The MLE (maximum likelihood estimator) is  $\hat p=\frac{\sum_{i=1}^{i=N} x_i }{N}$ and why?
+md"## 3.1 The MLE (maximum likelihood estimator) is  p̂ = ∑ᵢ₌₁ⁱ⁼ᴺ xᵢ/N and why?
 
 
 - https://stats.stackexchange.com/questions/275380/maximum-likelihood-estimation-for-bernoulli-distribution
@@ -134,7 +395,7 @@ md"### 3.1 The MLE (maximum likelihood estimator) is  $\hat p=\frac{\sum_{i=1}^{
 ![image.png](attachment:f0a44559-d8a5-4842-8ffa-fb2a6d31481f.png)"
 
 # ╔═╡ b11ee357-4212-4b54-8d2b-74eb48c967a7
-md"## 4 Bayesian
+md"# 4 Bayesian
 
 p is a random variable with a prior distribution.
 
@@ -156,53 +417,16 @@ md"- Is there an analytic solution to this? Yes, Beta-Binomial.
 - Is there a monte carlo solution? Yes, we will talk about this today."
 
 # ╔═╡ 42ed313f-2919-4463-8c76-1a15363ebd60
-md"### 4.1 Declare our Bayesian model and Monte Carlo with a HMC sampler"
-
-# ╔═╡ 6bfce2a4-838e-47eb-86a9-35559594ea90
-# Declare our Bayesian model，p ~ beta(1,1)， x ~ Bernoilli(p)
-@model function coinflip(x)
-    # Our prior belief about the probability of heads in a coin.
-    p ~ Beta(1, 1)
-
-    # The number of observations.
-    N = length(x)
-    for n in 1:N
-        # Heads or tails of a coin are drawn from a Bernoulli distribution.
-        x[n] ~ Bernoulli(p)
-    end
-end
-
-# ╔═╡ 0bcb19ff-193b-49d1-a7f2-1225288ee7ec
-begin
-	# Settings of the Hamiltonian Monte Carlo (HMC) sampler.
-	iterations = 1000
-	ϵ = 0.05
-	τ = 10
-	
-	# Start sampling.
-	@time chain = sample(coinflip(data), HMC(ϵ, τ), iterations)
-	display(chain)
-	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
-	histogram(chain[:p])
-end
-
-# ╔═╡ c343aeb9-4fad-46ec-8df5-ad47ea3737fc
-begin
-	# Using NUTS as sampler
-	@time chain_NUTS = sample(coinflip(data), NUTS(), iterations)
-	display(chain_NUTS)
-	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
-	histogram(chain_NUTS[:p])
-end
+md"## 4.1 Declare our Bayesian model and Monte Carlo with a HMC sampler"
 
 # ╔═╡ 70fcc963-418a-4899-a91c-495ff27a7c27
-md"#### 4.1.1 The posterior of p is max at $ p=0.4311$, almost same as MLE. Not 0.5!
+md"### 4.1.1 The posterior of p is max at $ p=0.4311$, almost same as MLE. Not 0.5!
 Because:
 1) the data is 43% up;
 2) we used a flat prior (uniform $\in [0,1]$). "
 
 # ╔═╡ a8961089-08a8-4d27-b1b2-117811ea7731
-md"### 4.2 Input is 10X more data."
+md"## 4.2 Input is 10X more data."
 
 # ╔═╡ 3d962581-bbab-490c-9b39-088b0608070f
 begin
@@ -216,62 +440,18 @@ end
 # ╔═╡ 4ca651ec-4586-49f2-a834-c6b0eb40ecbf
 md"### 4.2.1 sample using the same model but with 10X iterations"
 
-# ╔═╡ 81f972c6-ce66-4ab5-915a-4b1c6501f672
-begin
-	# sampling using the same model but more iterations
-	#ϵ=0.05, τ=10
-	@time chain_10X_HMC = sample(coinflip(data2), HMC(0.05, 10), 10_000)
-	display(chain_10X_HMC)
-	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
-	histogram(chain_10X_HMC[:p])
-end
-
 # ╔═╡ 7479b86b-bdad-45ea-a593-417a59cbb834
 md"### 4.2.2 same model, but using the NUTS sampler (default parameters)"
 
-# ╔═╡ 92251c31-7c79-4916-a192-1400f5225ea3
-begin
-	# Start sampling.
-	@time chain_10X_NUTS = sample(coinflip(data2), NUTS(), 10_000)
-	display(chain_10X_NUTS)
-	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
-	histogram(chain_10X_NUTS[:p])
-end
-
 # ╔═╡ 08163980-3f63-4c40-8bc8-677b00f66010
-md"### 4.3 Modify the prior to alter the posterior"
-
-# ╔═╡ 89f3522f-7b26-4880-9645-d3ad66f4838b
-# Declare our Bayesian model，p ~ beta， x ~ Bernoilli(p)
-# But let's modify the \alpha and \beta of the prior distribution.
-
-@model function coinflip_prior_around_0_5(x)
-    # Our prior belief about the probability of heads in a coin.
-    p ~ Beta(100, 100)
-
-    # The number of observations.
-    N = length(x)
-    for n in 1:N
-        # Heads or tails of a coin are drawn from a Bernoulli distribution.
-        x[n] ~ Bernoulli(p)
-    end
-end
-
-# ╔═╡ 96c363fd-7b02-4f56-b80b-64ae4eba2b7d
-begin
-	# Start sampling.
-	@time chain_strong_beta_NUTS = sample(coinflip_prior_around_0_5(data), NUTS(), 10_000)
-	display(chain_strong_beta_NUTS)
-	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
-	histogram(chain_strong_beta_NUTS[:p])
-end
+md"## 4.3 Modify the prior to alter the posterior"
 
 # ╔═╡ bcf0fb30-a7c1-42b4-a600-1d22d1337bd2
 md"### 4.3.1 Conclusion
 - With a Strong prior beta(100,100) around 0.5, we can obtain a posterior estimate around 0.48, instead of 0.43."
 
 # ╔═╡ 445f820a-d728-40d9-8931-c57d68e73465
-md"## 5 Test two different Negative Binomial models
+md"# 5 Test two different Negative Binomial models
 1. with a beta prior for p and Uniform prior for r
 1. with a beta prior for p and Gamma prior for r "
 
@@ -311,11 +491,92 @@ begin
 	
 end
 
+# ╔═╡ 6bfce2a4-838e-47eb-86a9-35559594ea90
+# Declare our Bayesian model，p ~ beta(1,1)， x ~ Bernoilli(p)
+@model function coinflip(x)
+    # Our prior belief about the probability of heads in a coin.
+    p ~ Beta(1, 1)
+
+    # The number of observations.
+    N = length(x)
+    for n in 1:N
+        # Heads or tails of a coin are drawn from a Bernoulli distribution.
+        x[n] ~ Bernoulli(p)
+    end
+end
+
+# ╔═╡ 0bcb19ff-193b-49d1-a7f2-1225288ee7ec
+begin
+	# Settings of the Hamiltonian Monte Carlo (HMC) sampler.
+	iterations = 1000
+	ϵ = 0.05
+	τ = 10
+	
+	# Start sampling.
+	@time chain = sample(coinflip(data), HMC(ϵ, τ), iterations)
+	display(chain)
+	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
+	histogram(chain[:p])
+end
+
+# ╔═╡ c343aeb9-4fad-46ec-8df5-ad47ea3737fc
+begin
+	# Using NUTS as sampler
+	@time chain_NUTS = sample(coinflip(data), NUTS(), iterations)
+	display(chain_NUTS)
+	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
+	histogram(chain_NUTS[:p])
+end
+
+# ╔═╡ 81f972c6-ce66-4ab5-915a-4b1c6501f672
+begin
+	# sampling using the same model but more iterations
+	#ϵ=0.05, τ=10
+	@time chain_10X_HMC = sample(coinflip(data2), HMC(0.05, 10), 10_000)
+	display(chain_10X_HMC)
+	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
+	histogram(chain_10X_HMC[:p])
+end
+
+# ╔═╡ 92251c31-7c79-4916-a192-1400f5225ea3
+begin
+	# Start sampling.
+	@time chain_10X_NUTS = sample(coinflip(data2), NUTS(), 10_000)
+	display(chain_10X_NUTS)
+	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
+	histogram(chain_10X_NUTS[:p])
+end
+
+# ╔═╡ 89f3522f-7b26-4880-9645-d3ad66f4838b
+# Declare our Bayesian model，p ~ beta， x ~ Bernoilli(p)
+# But let's modify the \alpha and \beta of the prior distribution.
+
+@model function coinflip_prior_around_0_5(x)
+    # Our prior belief about the probability of heads in a coin.
+    p ~ Beta(100, 100)
+
+    # The number of observations.
+    N = length(x)
+    for n in 1:N
+        # Heads or tails of a coin are drawn from a Bernoulli distribution.
+        x[n] ~ Bernoulli(p)
+    end
+end
+
+# ╔═╡ 96c363fd-7b02-4f56-b80b-64ae4eba2b7d
+begin
+	# Start sampling.
+	@time chain_strong_beta_NUTS = sample(coinflip_prior_around_0_5(data), NUTS(), 10_000)
+	display(chain_strong_beta_NUTS)
+	# Plot a summary of the sampling process for the parameter p, i.e. the probability of heads in a coin.
+	histogram(chain_strong_beta_NUTS[:p])
+end
+
 # ╔═╡ 8c594c78-3936-421f-9c2a-3d5cf7360459
 size(y)
 
 # ╔═╡ f21edd05-313d-4b86-8d32-efeec20563e7
-md"### 5.1 NB with a beta prior for p and Uniform prior for r"
+md"## 5.1 NB with a beta prior for p and Uniform prior for r"
 
 # ╔═╡ 057bff58-80b8-47d0-be1c-d8f29ae5af61
 begin
@@ -338,7 +599,7 @@ histogram(chain_w_uniform_and_beta_prior[:r], xlabel="r", legend=false)
 histogram(chain_w_uniform_and_beta_prior[:p], xlabel="p", legend=false)
 
 # ╔═╡ 773aeb7c-7384-48a5-9f15-8ceb886e68de
-md"### 5.2 NB with a beta prior for p and Gamma prior for r"
+md"## 5.2 NB with a beta prior for p and Gamma prior for r"
 
 # ╔═╡ 8eeeb415-843d-4e02-a0d2-ed8c2e68f83b
 @time chain_with_gamma_and_beta_prior = sample(negative_binomial_model(y), NUTS(0.65), 1000)
@@ -350,7 +611,7 @@ histogram(chain_with_gamma_and_beta_prior[:r])
 histogram(chain_with_gamma_and_beta_prior[:p])
 
 # ╔═╡ 89043a50-6e28-4a86-ae96-95723ca8a86f
-md"## 6 Estimate p of Binomial(N, p) from Binomial data with different Ns"
+md"# 6 Estimate p of Binomial(N, p) from Binomial data with different Ns"
 
 # ╔═╡ 7323e6f8-963c-4758-b94f-2e44859f6db4
 function simulate_data(p::Float64, cov_mean::Int=4000, cov_std::Int=700, no_of_samples::Int=500)
@@ -418,7 +679,7 @@ plot_histogram(N_v_00001, x_v_00001, vaf_v_00001, 0.00001)
 end
 
 # ╔═╡ f5c08e91-c9ec-4bad-8503-46d8585672fa
-md"### 6.1 Estimate if true p is 0.0005"
+md"## 6.1 Estimate if true p is 0.0005"
 
 # ╔═╡ 9f398fd0-0ff4-4cce-bbca-a6ce9457d241
 begin
@@ -438,7 +699,7 @@ end
 plot_estimates(vaf_v, chain_binomial_w_beta_prior[:p])
 
 # ╔═╡ cd430d83-7b9a-4b69-90e6-87292df06e20
-md"### 6.2 Estimate if true p is 0.005"
+md"## 6.2 Estimate if true p is 0.005"
 
 # ╔═╡ cca5db8c-d7f9-4087-9fb3-c304b34c3095
 begin
@@ -451,7 +712,7 @@ end
 plot_estimates(vaf_v_005, chain_binomial_w_beta_prior_005[:p])
 
 # ╔═╡ c586376a-67f3-4576-88bc-b40d78562435
-md"### 8.3 Estmate if true p is 0.00001"
+md"## 6.3 Estimate if true p is 0.00001"
 
 # ╔═╡ dafdd5da-7d0d-492a-ade5-a9e50abfedf2
 begin
@@ -464,7 +725,7 @@ end
 plot_estimates(vaf_v_00001, chain_binomial_w_beta_prior_00001[:p])
 
 # ╔═╡ e81f7ba7-3596-4960-9368-5836929c8ce0
-md"## 7 Estimate p of NegativeBinomial(r, p) from Binomial data with different Ns"
+md"# 7 Estimate p of NegativeBinomial(r, p) from Binomial data with different Ns"
 
 # ╔═╡ c1ca8939-99e0-4cb4-ac8f-94a6f28c529e
 # Define the model
@@ -498,7 +759,7 @@ begin
 end
 
 # ╔═╡ 67bd9e57-e37c-4407-9ee3-0e22deeb25b0
-md"### 7.1 ̂p of Beta+Binomial is similar to ̂p of Beta+NegativeBinomial."
+md"## 7.1 p̂ of Beta+Binomial is similar to ̂p of Beta+NegativeBinomial."
 
 # ╔═╡ 44fcbd22-cc6f-4c09-b749-406cff1aeced
 begin
@@ -508,7 +769,7 @@ begin
 end
 
 # ╔═╡ 1a090beb-8c1b-4a0d-aad3-d85a846ae323
-md"## 8 Multinomial"
+md"# 8 Multinomial"
 
 # ╔═╡ 51d7a213-2ba0-4d09-8ee2-0e91002ea915
 begin
@@ -535,10 +796,8 @@ end
 
 # ╔═╡ 298edd25-30eb-47ab-b8a6-26064168e76d
 begin
-	# Compile the model
-	model = multinomial_model(data_mn)
 	# Run the model
-	@time chain_mn = sample(model, NUTS(), 1_000)
+	@time chain_mn = sample(multinomial_model(data_mn), NUTS(), 1_000)
 	# Summarize the results
 	summary(chain_mn)
 end
@@ -572,353 +831,8 @@ begin
 	    bottom_margin=10*Plots.mm, size=(2000,930) ) 
 end
 
-# ╔═╡ 8f428c07-e87e-4642-be5e-2347a25a86f4
-md"## 9 Mixture model"
-
-# ╔═╡ c4065dfe-55c5-42a0-88bc-9231125757b9
-md"### 9.1 Two-component mixture model
-- https://turinglang.org/dev/tutorials/06-infinite-mixture-model/"
-
-# ╔═╡ b6cf9057-1f2a-42cc-9233-6692806ee419
-@model function two_comp_mixture(x)
-    # Hyper-parameters
-    μ0 = 0.0
-    σ0 = 1.0
-
-    # Draw weights.
-    π1 ~ Beta(1, 1)
-    π2 = 1 - π1
-
-    # Draw locations of the components.
-    μ1 ~ Normal(μ0, σ0)
-    μ2 ~ Normal(μ0, σ0)
-
-    # Draw latent assignment.
-    z ~ Categorical([π1, π2])
-
-    # Draw observation from selected component.
-    if z == 1
-        x ~ Normal(μ1, σ0)
-    else
-        x ~ Normal(μ2, σ0)
-    end
-end
-
-# ╔═╡ af8227a8-3249-43dd-8bc6-0f08a05e81ef
-md"### 9.2  Finite Mixture Model
-
-If we have more than two components, this model can elegantly be extended using a Dirichlet distribution as prior for the mixing weights. Note that the Dirichlet distribution is the multivariate generalization of the beta distribution. The resulting model can be written as:
-
- 
-
-which resembles the model in the Gaussian mixture model tutorial with a slightly different notation."
-
-# ╔═╡ 4756ab6b-fc05-40ca-9759-c6f1d0b78ff7
-md"### 9.3 Infinite Mixture Model
-
-The question now arises, is there a generalization of a Dirichlet distribution for which the dimensionality is infinite, i.e. 
-
-But first, to implement an infinite Gaussian mixture model in Turing, we first need to load the Turing.RandomMeasures module. RandomMeasures contains a variety of tools useful in nonparametrics."
-
-# ╔═╡ 9975d122-59e6-4513-ad82-7f5a7c37bbe4
-md"We now will utilize the fact that one can integrate out the mixing weights in a Gaussian mixture model allowing us to arrive at the Chinese restaurant process construction. See Carl E. Rasmussen: The Infinite Gaussian Mixture Model, NIPS (2000) for details.
-
-In fact, if the mixing weights are integrated out, the conditional prior for the latent variable is given by:
- 
-$p(z_i=k|z_{\neg i}, \alpha) = \frac{n_k + \alpha K}{ N - 1 + \alpha}$
-
-
-where $z_{-i}$ are the latent assignments of all observations except observation $i$. Note that we use $n_k$ to denote the number of observations at component $k$ excluding observation $i$. The parameter $\alpha$ is the concentration parameter of the Dirichlet distribution used as prior over the mixing weights."
-
-# ╔═╡ d72cab2e-7c27-471e-af55-2c575230ca93
-md"### 9.3.1 Chinese Restaurant Process
-
-To obtain the Chinese restaurant process construction, we can now derive the conditional prior if $K \rightarrow \infty$.
-
-For $n_k>0$, we obtain:
-
-$p(z_i=k|z_{\neg i}, \alpha) = \frac{n_k }{ N - 1 + \alpha}$
-
-and for all infinitely many clusters that are empty (combined) we get:
-
-$p(z_i=k|z_{\neg i}, \alpha) = \frac{ \alpha }{ N - 1 + \alpha}$
- 
-
-Those equations show that the conditional prior for component assignments is proportional to the number of such observations, meaning that the Chinese restaurant process has a rich get richer property.
-
-To get a better understanding of this property, we can plot the cluster choosen by for each new observation drawn from the conditional prior."
-
-# ╔═╡ 0813082a-36b3-4d9f-867a-5324281f244b
-begin
-	@show parentmodule(DirichletProcess)
-	@show parentmodule(ChineseRestaurantProcess)
-	@show parentmodule(StickBreakingProcess)
-end
-
-# ╔═╡ 0d525767-52eb-490c-b628-1a7db9ecea21
-md"### 9.3.1.1 Visualize the cluster growth given the growing data points"
-
-# ╔═╡ cff0108b-b745-4f2e-9f27-48e3624bbf0e
-begin
-	# Concentration parameter.
-	α = 1.0
-	
-	# Random measure, e.g. Dirichlet process.
-	rpm = DirichletProcess(α)
-	
-	# Cluster assignments for each observation.
-	z = Vector{Int}()
-	
-	# Maximum number of observations we observe.
-	Nmax = 500
-	
-	for i in 1:Nmax
-	    # Number of observations per cluster.
-	    K = isempty(z) ? 0 : maximum(z)
-	    nk = Vector{Int}(map(k -> sum(z .== k), 1:K))
-	
-	    # Draw new assignment.
-	    push!(z, rand(ChineseRestaurantProcess(rpm, nk)))
-	end
-end
-
-# ╔═╡ c5c9bdaa-6e3b-46d9-b537-791a7c1739bf
-@gif for i in 1:Nmax
-    scatter(
-        collect(1:i),
-        z[1:i];
-        markersize=2,
-        xlabel="observation (i)",
-        ylabel="cluster (k)",
-        legend=false,
-    )
-end
-
-# ╔═╡ 28cbcd7a-bfb3-4f59-86fc-d5e84829da01
-nk=Vector{Int}(map(k -> sum(z .==k), 1:maximum(z) ))
-
-# ╔═╡ 65f761e5-5b59-4d87-89ae-a763591e63d9
-maximum(z)
-
-# ╔═╡ 4ef1c808-bc54-459e-a0c4-4928714eaa0b
-rand(ChineseRestaurantProcess(rpm, nk))
-
-# ╔═╡ a8393424-e097-4dd5-be88-24886798ffb0
-md"Further, we can see that the number of clusters is logarithmic in the number of observations and data points. This is a side-effect of the `rich-get-richer` phenomenon, i.e. we expect large clusters and thus the number of clusters has to be smaller than the number of observations.
-
-$E[K|N] \approx \alpha * log(1+\frac{N}{\alpha})$
-
-We can see from the equation that the concentration parameter $\alpha$ allows us to control the number of clusters formed *a priori*.
-
-In Turing we can implement an infinite Gaussian mixture model using the Chinese restaurant process construction of a Dirichlet process as follows:"
-
-# ╔═╡ 7c0c50dc-e376-4365-b2ec-eeb7f26722fd
-md"### 9.3.1.2 Test CRP on a infinite Gaussian Mixture Model"
-
-# ╔═╡ 48477352-5850-4291-8b99-e4a688811246
-@model function infiniteGMM(x, warn=true)
-    # Hyper-parameters, i.e. concentration parameter and parameters of H.
-    α = 0.5  # the smaller α is, the less clusters a priori.
-    μ0 = 0.0  # μ of Prior to draw Gaussian cluster mean
-    σ0 = 1.0  # σ of Prior to draw Gaussian cluster mean
-    σ1 = 1.0  # σ for each Gaussian cluster
-
-    # Define random measure, e.g. Dirichlet process.
-    rpm = DirichletProcess(α)
-
-    # The base distribution, to draw the mean value of all Gaussian distributions in the Dirichlet process.
-    H = Normal(μ0, σ0)
-
-    # Latent assignment.
-    z = zeros(Int, length(x)) # tzeros() = zeros()
-
-    # Locations of the infinitely many Gaussian clusters.
-    μ = zeros(Float64, 0)
-    # Number of clusters.
-    K = 0
-
-    for i in 1:length(x)
-
-        # Number of clusters.
-        #K = maximum(z)
-        nk = Vector{Int}(map(k -> sum(z .== k), 1:K))
-
-        # Draw the latent assignment.
-        z[i] ~ ChineseRestaurantProcess(rpm, nk)
-
-        # Create a new cluster?
-        if z[i] > K
-            K += 1
-            push!(μ, 0.0)
-
-            # Draw location of new cluster.
-            μ[z[i]] ~ H
-        end
-
-        # An observation that follows this distribution
-        x[i] ~ Normal(μ[z[i]], σ1)
-    end
-end
-
-
-# ╔═╡ 41a0c3b8-8975-4d69-88cf-6d076f5ad5f2
-tzeros(Int, 3)
-
-# ╔═╡ baf60493-ff2f-4e17-8314-7c7ebdfaf536
-md"We can now use Turing to infer the assignments of some data points. First, we will create some random data that comes from three clusters, with means of 0, -10, and 10, which is a bit easier than to infer 0, -5, 10."
-
-# ╔═╡ df4c8aa3-9961-44ca-b24f-0bf3f7e26d39
-begin 
-	# Generate some test data.
-	Random.seed!(1)
-	csize=100
-	data_gmm = vcat(randn(csize), randn(csize) .- 10, randn(csize) .+ 10)
-	@show size(data_gmm)
-	@show mean(data_gmm)
-	data_gmm .-= mean(data_gmm)
-	data_gmm /= std(data_gmm);
-	histogram(data_gmm, bins=20)
-end
-
-# ╔═╡ f3027ecf-4b95-4a76-b5cf-b572ca3eb050
-scatter(1:csize*3, data_gmm)
-
-# ╔═╡ 245f4489-1320-4502-a956-5f922e4fcf8e
-begin
-	# MCMC sampling
-	Random.seed!(2)
-	@time model_infini_GMM_CRP = infiniteGMM(data_gmm);
-	@time chain_infini_GMM_CRP = sample(model_infini_GMM_CRP, SMC(), 1500);
-end
-
-# ╔═╡ b551b54c-ab60-473a-89df-c7e9388cecd0
-begin
-	@time chain_infini_GMM_CRP_DF = DataFrame(chain_infini_GMM_CRP)
-	#@show first(chain_infini_GMM_CRP_DF,5)
-	last(chain_infini_GMM_CRP_DF, 5)
-end
-
-# ╔═╡ f6870036-a104-41a0-8b4f-a23d38b119d4
-begin
-	z_estimated = vec(chain_infini_GMM_CRP[1500, MCMCChains.namesingroup(chain_infini_GMM_CRP, :z),:].value)
-	scatter(1:csize*3, z_estimated)
-end
-
-# ╔═╡ ac4a1de3-8ac4-4acb-9a0e-d7f517253e50
-unique(z_estimated)
-
-# ╔═╡ d832417b-151f-4a0f-8084-6c9007c8614a
-function draw_cluster_no_in_chain(chain; burnin_iter=1, iterations=1000)    
-    # Extract the number of clusters for each sample of the Markov chain.
-    K = map(
-        t -> length(unique(vec(chain[t, MCMCChains.namesingroup(chain, :z), :].value))),
-        burnin_iter:iterations,
-    );
-
-    # Visualize the number of clusters.
-    s_of_K = scatter(burnin_iter:iterations, K; xlabel="Iteration", 
-        ylabel="Number of clusters", label="Chain 1")
-    h_of_K = histogram(K; xlabel="Number of clusters", legend=false)
-
-    plot(s_of_K, h_of_K, layout=(1,2), left_margin=5*Plots.mm, 
-        bottom_margin=5*Plots.mm, size=(1200,430) ) 
-end
-
-
-# ╔═╡ f875202b-5c14-4800-8624-af904d1b19a3
-@time draw_cluster_no_in_chain(chain_infini_GMM_CRP; burnin_iter=1, iterations=1500)
-
-# ╔═╡ a1198545-4cc6-420e-bc85-ddde4ba8ab3c
-md"### 9.3.2 Stick-breaking process
-
-
-$\beta_k \sim Beta(1,\alpha)$
- 
-$\pi_k = \beta_k \Pi_{l=1}^{k-1} (1-\beta_{l})$
- 
-$\theta^*_k \sim H$
- 
-$G = \Sigma_{k=1}^{\infty}\pi_k \delta_{\theta_k^*}$
- 
-"
-
-# ╔═╡ 8d269347-42a0-4ce6-8b07-1d065780eda1
-md"### 9.3.3 Size biased sampling"
-
-# ╔═╡ 3c6f3a86-84c2-4ef8-b520-a5804d053d86
-
-"""
-$(SIGNATURES)
-Arguments:
-- x: 1D data.
-- rpm: is a Random process measure. e.g. Dirichlet process.
-
-```julia
-rpm = DirichletProcess(0.5)
-```
-
-- Hyper-parameters, i.e. concentration parameter and parameters of H.
-
-"""
-@model function infiniteGMM_size_biased(x, rpm)
-	# The base distribution, to draw the mean value of all Gaussian distributions in the Dirichlet process.
-	H = Normal(0.0, 2)
-	
-	N = length(x)
-	# Latent assignment.
-	z = zeros(Int, N)  #was tzeros()
-
-	# Locations of the infinitely many clusters.
-	μ = zeros(Float64, 0)
-	
-	# probability weights for each class
-	J = zeros(Float64, N)
-
-	K = 0 
-	surplus=1.0
-	for i in 1:N
-		ps = vcat(J[1:K], surplus)
-		z[i] ~ Categorical(ps)
-
-		# Create a new cluster?
-		if z[i] > K
-			K += 1
-			push!(μ, 0.0)
-			# Assign a weight
-			J[K] ~ SizeBiasedSamplingProcess(rpm, surplus)
-			μ[K] ~ H
-			surplus -= J[K]
-		end
-
-		# An observation that follows this distribution
-		x[i] ~ Normal(μ[z[i]], 1)
-	end
-end
-
-
-# ╔═╡ c37b709c-bcf5-4229-a421-5b40cbda24f8
-
-begin
-	# MCMC sampling
-	Random.seed!(2)
-	@time model_size_biased = infiniteGMM_size_biased(data_gmm, DirichletProcess(0.5));
-	@time chain_infini_GMM_size_biased = sample(model_size_biased, SMC(), 1000);
-end
-
-# ╔═╡ dd7592d0-0031-4978-8392-80d31d672f21
-draw_cluster_no_in_chain(chain_infini_GMM_size_biased)
-
-# ╔═╡ 4d22ab2c-88af-4349-8a10-fd48e83c835d
-begin
-	z_estimated_2 = vec(chain_infini_GMM_size_biased[1000, MCMCChains.namesingroup(chain_infini_GMM_size_biased, :z),:].value)
-	scatter(1:300, z_estimated_2)
-end
-
-# ╔═╡ fc893fa0-77f0-44fb-8071-b5b3c5d64697
-
-
 # ╔═╡ cc9b2c50-e5d0-4764-8089-95804c5a1dc7
-md"## 10 Visualize beta distributions"
+md"# 10 Visualize beta distributions"
 
 # ╔═╡ 4a05157d-1792-4f01-8b80-0639aac47998
 plot(x -> pdf(Beta(1, 5), x), 
@@ -937,15 +851,16 @@ x -> pdf(Beta(1, 5), x)
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
+DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
 FillArrays = "1a297f60-69ca-5386-bcde-b61e274b549b"
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Markdown = "d6f4376e-aef5-505a-96c1-9c027394607a"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
-Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
@@ -954,11 +869,12 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [compat]
 DataFrames = "~1.6.1"
+DataStructures = "~0.18.18"
 Distributions = "~0.25.107"
 DocStringExtensions = "~0.9.3"
 DrWatson = "~2.14.1"
+DynamicPPL = "~0.24.9"
 FillArrays = "~1.9.3"
-Plots = "~1.40.2"
 PlutoUI = "~0.7.58"
 StatsPlots = "~0.15.7"
 Turing = "~0.30.7"
@@ -970,7 +886,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.2"
 manifest_format = "2.0"
-project_hash = "b6a11094c1286beb263c9643590a12f49d12d8e4"
+project_hash = "d64c43d5dbe5ec065112509ea529ea48ef400755"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "016833eb52ba2d6bea9fcb50ca295980e728ee24"
@@ -1002,9 +918,9 @@ version = "0.7.1"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
-git-tree-sha1 = "0f748c81756f2e5e6854298f11ad8b2dfae6911a"
+git-tree-sha1 = "297b6b41b66ac7cbbebb4a740844310db9fd7b8c"
 uuid = "6e696c72-6542-2067-7265-42206c756150"
-version = "1.3.0"
+version = "1.3.1"
 
 [[deps.AbstractTrees]]
 git-tree-sha1 = "2d9c9a55f9c93e8887ad391fbae72f8ef55e1177"
@@ -1184,9 +1100,9 @@ version = "0.1.1"
 
 [[deps.Bijectors]]
 deps = ["ArgCheck", "ChainRules", "ChainRulesCore", "ChangesOfVariables", "Compat", "Distributions", "Functors", "InverseFunctions", "IrrationalConstants", "LinearAlgebra", "LogExpFunctions", "MappedArrays", "Random", "Reexport", "Requires", "Roots", "SparseArrays", "Statistics"]
-git-tree-sha1 = "199dc2c4151db557549a0ad8888ce1a60337ff42"
+git-tree-sha1 = "1e6efb4f040c58d5189ae6e452b16212ecd9e923"
 uuid = "76274a88-744f-5084-9051-94815aaf08c4"
-version = "0.13.8"
+version = "0.13.9"
 
     [deps.Bijectors.extensions]
     BijectorsDistributionsADExt = "DistributionsAD"
@@ -1278,9 +1194,9 @@ version = "3.24.0"
 
 [[deps.ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
-git-tree-sha1 = "eb7f0f8307f71fac7c606984ea5fb2817275d6e4"
+git-tree-sha1 = "b10d0b65641d57b8b4d5e234446582de5047050d"
 uuid = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
-version = "0.11.4"
+version = "0.11.5"
 
 [[deps.ColorVectorSpace]]
 deps = ["ColorTypes", "FixedPointNumbers", "LinearAlgebra", "Requires", "Statistics", "TensorCore"]
@@ -1362,9 +1278,9 @@ weakdeps = ["IntervalSets", "StaticArrays"]
     ConstructionBaseStaticArraysExt = "StaticArrays"
 
 [[deps.Contour]]
-git-tree-sha1 = "d05d9e7b7aedff4e5b51a029dced05cfb6125781"
+git-tree-sha1 = "439e35b0b36e2e5881738abc8857bd92ad6ff9a8"
 uuid = "d38c429a-6771-53c6-b99e-75d170b6e991"
-version = "0.6.2"
+version = "0.6.3"
 
 [[deps.Crayons]]
 git-tree-sha1 = "249fe38abf76d48563e2f4556bebd215aa317e15"
@@ -1384,9 +1300,9 @@ version = "1.6.1"
 
 [[deps.DataStructures]]
 deps = ["Compat", "InteractiveUtils", "OrderedCollections"]
-git-tree-sha1 = "0f4b5d62a88d8f59003e43c25a8a90de9eb76317"
+git-tree-sha1 = "97d79461925cdb635ee32116978fc735b9463a39"
 uuid = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
-version = "0.18.18"
+version = "0.18.19"
 
 [[deps.DataValueInterfaces]]
 git-tree-sha1 = "bfc1187b79289637fa0ef6d4436ebdfe6905cbd6"
@@ -1647,9 +1563,9 @@ version = "0.1.3"
 
 [[deps.Functors]]
 deps = ["LinearAlgebra"]
-git-tree-sha1 = "8ae30e786837ce0a24f5e2186938bf3251ab94b2"
+git-tree-sha1 = "d3e63d9fa13f8eaa2f06f64949e2afc593ff52c2"
 uuid = "d9f16b24-f501-4c13-a1f2-28368ffc5196"
-version = "0.4.8"
+version = "0.4.10"
 
 [[deps.Future]]
 deps = ["Random"]
@@ -1878,9 +1794,9 @@ version = "3.0.0+1"
 
 [[deps.LLVM]]
 deps = ["CEnum", "LLVMExtra_jll", "Libdl", "Preferences", "Printf", "Requires", "Unicode"]
-git-tree-sha1 = "ab01dde107f21aa76144d0771dccc08f152ccac7"
+git-tree-sha1 = "839c82932db86740ae729779e610f07a1640be9a"
 uuid = "929cbde3-209d-540e-8aea-75f648917ca0"
-version = "6.6.2"
+version = "6.6.3"
 
     [deps.LLVM.extensions]
     BFloat16sExt = "BFloat16s"
@@ -2150,9 +2066,9 @@ version = "0.1.4"
 
 [[deps.Missings]]
 deps = ["DataAPI"]
-git-tree-sha1 = "f66bdc5de519e8f8ae43bdc598782d35a25b1272"
+git-tree-sha1 = "ec4f7fbeab05d7747bdf98eb74d130a2a2ed298d"
 uuid = "e1d29d7a-bbdc-5cf2-9ac0-f12de2c33e28"
-version = "1.1.0"
+version = "1.2.0"
 
 [[deps.Mmap]]
 uuid = "a63ad114-7e13-5084-954f-fe012c677804"
@@ -2169,9 +2085,9 @@ version = "0.10.2"
 
 [[deps.NNlib]]
 deps = ["Adapt", "Atomix", "ChainRulesCore", "GPUArraysCore", "KernelAbstractions", "LinearAlgebra", "Pkg", "Random", "Requires", "Statistics"]
-git-tree-sha1 = "877f15c331337d54cf24c797d5bcb2e48ce21221"
+git-tree-sha1 = "1fa1a14766c60e66ab22e242d45c1857c83a3805"
 uuid = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
-version = "0.9.12"
+version = "0.9.13"
 
     [deps.NNlib.extensions]
     NNlibAMDGPUExt = "AMDGPU"
@@ -2218,9 +2134,9 @@ uuid = "510215fc-4207-5dde-b226-833fc4488ee2"
 version = "0.5.5"
 
 [[deps.OffsetArrays]]
-git-tree-sha1 = "6a731f2b5c03157418a20c12195eb4b74c8f8621"
+git-tree-sha1 = "e64b4f5ea6b7389f6f046d13d4896a8f9c1ba71e"
 uuid = "6fe1bfb0-de20-5000-8ca7-80f57d26f881"
-version = "1.13.0"
+version = "1.14.0"
 weakdeps = ["Adapt"]
 
     [deps.OffsetArrays.extensions]
@@ -2250,9 +2166,9 @@ version = "1.4.2"
 
 [[deps.OpenSSL_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "60e3045590bd104a16fefb12836c00c0ef8c7f8c"
+git-tree-sha1 = "3da7367955dcc5c54c1ba4d402ccdc09a1a3e046"
 uuid = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
-version = "3.0.13+0"
+version = "3.0.13+1"
 
 [[deps.OpenSpecFun_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "Pkg"]
@@ -2262,9 +2178,9 @@ version = "0.5.5+0"
 
 [[deps.Optimisers]]
 deps = ["ChainRulesCore", "Functors", "LinearAlgebra", "Random", "Statistics"]
-git-tree-sha1 = "264b061c1903bc0fe9be77cb9050ebacff66bb63"
+git-tree-sha1 = "6572fe0c5b74431aaeb0b18a4aa5ef03c84678be"
 uuid = "3bd65402-5787-11e9-1adc-39752487f4e2"
-version = "0.3.2"
+version = "0.3.3"
 
 [[deps.Opus_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -2324,9 +2240,9 @@ version = "1.4.1"
 
 [[deps.Plots]]
 deps = ["Base64", "Contour", "Dates", "Downloads", "FFMPEG", "FixedPointNumbers", "GR", "JLFzf", "JSON", "LaTeXStrings", "Latexify", "LinearAlgebra", "Measures", "NaNMath", "Pkg", "PlotThemes", "PlotUtils", "PrecompileTools", "Printf", "REPL", "Random", "RecipesBase", "RecipesPipeline", "Reexport", "RelocatableFolders", "Requires", "Scratch", "Showoff", "SparseArrays", "Statistics", "StatsBase", "UUIDs", "UnicodeFun", "UnitfulLatexify", "Unzip"]
-git-tree-sha1 = "3c403c6590dd93b36752634115e20137e79ab4df"
+git-tree-sha1 = "442e1e7ac27dd5ff8825c3fa62fbd1e86397974b"
 uuid = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
-version = "1.40.2"
+version = "1.40.4"
 
     [deps.Plots.extensions]
     FileIOExt = "FileIO"
@@ -2536,9 +2452,9 @@ version = "0.7.0"
 
 [[deps.SciMLBase]]
 deps = ["ADTypes", "ArrayInterface", "CommonSolve", "ConstructionBase", "Distributed", "DocStringExtensions", "EnumX", "FunctionWrappersWrappers", "IteratorInterfaceExtensions", "LinearAlgebra", "Logging", "Markdown", "PrecompileTools", "Preferences", "Printf", "RecipesBase", "RecursiveArrayTools", "Reexport", "RuntimeGeneratedFunctions", "SciMLOperators", "SciMLStructures", "StaticArraysCore", "Statistics", "SymbolicIndexingInterface", "Tables"]
-git-tree-sha1 = "d15c65e25615272e1b1c5edb1d307484c7942824"
+git-tree-sha1 = "914dbb2ce3165ee832f4619488ef9b077444959a"
 uuid = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
-version = "2.31.0"
+version = "2.32.1"
 
     [deps.SciMLBase.extensions]
     SciMLBaseChainRulesCoreExt = "ChainRulesCore"
@@ -2687,9 +2603,9 @@ version = "1.7.0"
 
 [[deps.StatsBase]]
 deps = ["DataAPI", "DataStructures", "LinearAlgebra", "LogExpFunctions", "Missings", "Printf", "Random", "SortingAlgorithms", "SparseArrays", "Statistics", "StatsAPI"]
-git-tree-sha1 = "1d77abd07f617c4868c33d4f5b9e1dbb2643c9cf"
+git-tree-sha1 = "5cf7606d6cef84b543b483848d4ae08ad9832b21"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
-version = "0.34.2"
+version = "0.34.3"
 
 [[deps.StatsFuns]]
 deps = ["HypergeometricFunctions", "IrrationalConstants", "LogExpFunctions", "Reexport", "Rmath", "SpecialFunctions"]
@@ -2737,10 +2653,10 @@ uuid = "bea87d4a-7f5b-5778-9afe-8cc45184846c"
 version = "7.2.1+1"
 
 [[deps.SymbolicIndexingInterface]]
-deps = ["ArrayInterface", "MacroTools", "RuntimeGeneratedFunctions", "StaticArraysCore"]
-git-tree-sha1 = "dd94edee1542e9da422cb2f12494ef09ea823e48"
+deps = ["Accessors", "ArrayInterface", "MacroTools", "RuntimeGeneratedFunctions", "StaticArraysCore"]
+git-tree-sha1 = "40ea524431a92328cd73582d1820a5b08247a40f"
 uuid = "2efcf032-c050-4f8e-a9bb-153293bab1f5"
-version = "0.3.13"
+version = "0.3.16"
 
 [[deps.TOML]]
 deps = ["Dates"]
@@ -2797,9 +2713,9 @@ weakdeps = ["PDMats"]
     TrackerPDMatsExt = "PDMats"
 
 [[deps.TranscodingStreams]]
-git-tree-sha1 = "14389d51751169994b2e1317d5c72f7dc4f21045"
+git-tree-sha1 = "71509f04d045ec714c4748c785a59045c3736349"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
-version = "0.10.6"
+version = "0.10.7"
 weakdeps = ["Random", "Test"]
 
     [deps.TranscodingStreams.extensions]
@@ -2932,9 +2848,9 @@ version = "1.0.0"
 
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Zlib_jll"]
-git-tree-sha1 = "07e470dabc5a6a4254ffebc29a1b3fc01464e105"
+git-tree-sha1 = "532e22cf7be8462035d092ff21fada7527e2c488"
 uuid = "02c8fc9c-b97f-50b9-bbe4-9be30ff0a78a"
-version = "2.12.5+0"
+version = "2.12.6+0"
 
 [[deps.XSLT_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libgcrypt_jll", "Libgpg_error_jll", "Libiconv_jll", "Pkg", "XML2_jll", "Zlib_jll"]
@@ -2944,9 +2860,9 @@ version = "1.1.34+0"
 
 [[deps.XZ_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "31c421e5516a6248dfb22c194519e37effbf1f30"
+git-tree-sha1 = "ac88fb95ae6447c8dda6a5503f3bafd496ae8632"
 uuid = "ffd25f8a-64ca-5728-b0f7-c24cf3aae800"
-version = "5.6.1+0"
+version = "5.4.6+0"
 
 [[deps.Xorg_libICE_jll]]
 deps = ["Libdl", "Pkg"]
@@ -3099,9 +3015,9 @@ version = "1.2.13+1"
 
 [[deps.Zstd_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "49ce682769cd5de6c72dcf1b94ed7790cd08974c"
+git-tree-sha1 = "e678132f07ddb5bfa46857f0d7620fb9be675d3b"
 uuid = "3161d3a3-bdf6-5164-811a-617609db77b4"
-version = "1.5.5+0"
+version = "1.5.6+0"
 
 [[deps.ZygoteRules]]
 deps = ["ChainRulesCore", "MacroTools"]
@@ -3214,47 +3130,106 @@ version = "1.4.1+1"
 # ╠═36c62876-1ab7-438b-8d5e-16ee391a11eb
 # ╠═ff1dc8d2-ecbc-11ee-022e-653b5473f25a
 # ╠═5c25b00d-5c84-498d-b439-de3a59198ef2
+# ╠═eb3dd1f4-2266-41f5-9191-343fe5133f7e
 # ╠═49d67176-6130-4bc0-bd99-2f5a43e20b5d
 # ╠═ea83b213-db5e-4a18-a274-51aeb86c14a8
 # ╠═660853b1-0c41-466d-aa5d-49422ff076a8
 # ╟─5964c6e8-ad85-4f20-8eee-85b1b6673546
+# ╠═9fa3c45d-458f-48e7-a652-d3c288fd94d1
+# ╠═82d1cb2f-b5ee-42d1-882d-71ab6e571268
+# ╠═54a605e1-525f-4cd2-ab32-b689d6e0d668
+# ╟─27c646e3-1fd7-4001-ad6c-d60efde2c870
+# ╠═4469f618-932e-4fa1-8dc2-f5c2f365072c
+# ╠═7d533ab7-d258-489d-85f9-615e987badfc
+# ╟─57f154ad-72f6-4371-be3a-59c0fe415749
+# ╠═74f6eba0-f7b8-49cd-98bc-c3ceabc7245b
+# ╟─81941af8-8607-4b5c-8e2d-1d7a182f8725
+# ╠═6fa3cdea-6712-4f3e-838c-76e5b178cf86
+# ╟─dabdffc8-75ff-4725-8e5d-944eedd90a7f
+# ╠═fab3efeb-8083-413a-9490-6d3b81ce07d9
+# ╠═5a0bf169-9fc9-4415-9181-04b61d8b4b23
+# ╟─111e81e5-fcc3-4362-b0f8-b8ad78960e35
+# ╠═e3819f0c-c20e-420c-92da-065c3480ed3a
+# ╠═0e038cf7-fd32-426b-9466-1a1e96c59cb8
+# ╠═32759c69-5c27-4caf-9c38-f521dafff54f
+# ╠═372d1f9f-0ec7-40a2-b0ae-4559661e67da
+# ╠═7947df07-6e0d-4e3d-99ec-9c10c3289459
+# ╠═31b126e9-cb9d-4ef1-b985-9a1f85afa3fe
+# ╠═4b930e50-c33c-428a-b398-886696c2a711
+# ╟─6c1304d0-59d6-4824-ba65-07e6374896c5
+# ╠═1fbf92fb-8ca1-4b7e-b4ae-da3bfa617241
+# ╟─002ad479-3c77-456f-84bf-c5716f6787c6
+# ╠═5cbf5330-f2bd-42e2-8fc6-cf7544cd5ffd
+# ╠═4020291d-1b51-4891-9f7b-222e8ffc029d
+# ╠═3bee11f3-b76c-4d7c-818c-e164431aabfd
+# ╟─73731e6e-fd65-4891-9e0a-87f4b6da81d3
+# ╟─55af0de3-caa3-4968-8ce8-d1fe91b47ef8
+# ╠═fd73f727-f8ff-43d5-af4f-9e1fbd235f04
+# ╠═2afab592-b139-42cb-b39c-de434e5f58f7
+# ╟─2b66f8df-d211-4e2a-83e3-978b94e85aaf
+# ╠═8f5abeff-18ef-4ca4-b5d9-504d8fb45a67
+# ╠═4fb0c6df-1a26-4348-9980-84897359f5da
+# ╠═6daade07-f776-406b-9663-a8e45b7c24dd
+# ╠═0ed3ce6b-7d5f-422b-b448-f0fa7858cc78
+# ╠═8ae0e56a-91b4-48ef-8a01-c314b5522805
+# ╠═b72bda77-35ca-48da-adf7-957a6cd5f3fe
+# ╠═543c7816-6a4c-4b1b-a6da-e2daf7c9fb6b
+# ╠═451a6ed3-2da7-4705-af5e-af22e86889fe
+# ╟─9a9eb504-15d8-41f0-8442-80abc41c0bb5
+# ╠═eb11a3f4-4388-49d3-b6cd-72acad34ac9a
+# ╠═677f2041-eedc-4428-9f47-f884f787a24d
+# ╠═b9ebc807-e102-441b-ac4e-b11646b79c53
+# ╠═a01ebda4-5a22-4340-a070-0653ed24a1a4
+# ╟─9f9c93df-8c4e-4d7b-90d6-92b575590db2
+# ╠═69fc5ce5-ae8b-47aa-9305-16d85d6a6c37
+# ╟─fcea061b-45f1-4b20-b5bf-875b95be82ec
+# ╠═2a14e9bc-9585-4f9f-973d-9f9c93579b33
+# ╟─083af0fb-75b9-435f-a2cb-ddbfada1a169
+# ╠═8682551b-137b-415a-aeb4-e7f644979089
+# ╠═4faa2266-761e-436f-8bfe-bd9b7472a17b
+# ╟─958da451-d7ee-48cc-b5f8-22a884cf085c
+# ╟─65c7b570-3d2d-4d8f-b024-829bdec63f7f
+# ╠═d443a479-0f08-4275-8ba2-87b697a8a738
+# ╠═d3d93b48-a28e-4d5a-8183-e831fb584d4b
+# ╟─ea574478-70fc-436e-a8f1-4bd5fb4b2e18
+# ╠═586de38c-3293-4c1b-9fdd-0fc810a1e1c8
 # ╟─132e9d0f-06fb-4b23-bdc3-3577c90dabbc
 # ╟─e027a63d-c856-4299-b1ca-4124864884de
 # ╠═ed092bf4-4b9a-4e1d-b65d-f1d245eb7f3f
-# ╟─3109f2ae-54ad-45b7-b260-3ffcc025bdaf
-# ╠═e9e7cf2b-a241-44a7-916d-1b5929edcb2e
+# ╠═3109f2ae-54ad-45b7-b260-3ffcc025bdaf
+# ╟─e9e7cf2b-a241-44a7-916d-1b5929edcb2e
 # ╠═79851d71-69e1-4e57-9e2c-fb646a026f80
-# ╟─b11ee357-4212-4b54-8d2b-74eb48c967a7
+# ╠═b11ee357-4212-4b54-8d2b-74eb48c967a7
 # ╟─054d552e-7a21-4f1f-b0c4-322bf3c12cdb
 # ╟─42ed313f-2919-4463-8c76-1a15363ebd60
 # ╠═6bfce2a4-838e-47eb-86a9-35559594ea90
 # ╠═0bcb19ff-193b-49d1-a7f2-1225288ee7ec
 # ╠═c343aeb9-4fad-46ec-8df5-ad47ea3737fc
 # ╠═70fcc963-418a-4899-a91c-495ff27a7c27
-# ╟─a8961089-08a8-4d27-b1b2-117811ea7731
+# ╠═a8961089-08a8-4d27-b1b2-117811ea7731
 # ╠═3d962581-bbab-490c-9b39-088b0608070f
 # ╠═4ca651ec-4586-49f2-a834-c6b0eb40ecbf
 # ╠═81f972c6-ce66-4ab5-915a-4b1c6501f672
-# ╟─7479b86b-bdad-45ea-a593-417a59cbb834
+# ╠═7479b86b-bdad-45ea-a593-417a59cbb834
 # ╠═92251c31-7c79-4916-a192-1400f5225ea3
-# ╟─08163980-3f63-4c40-8bc8-677b00f66010
+# ╠═08163980-3f63-4c40-8bc8-677b00f66010
 # ╠═89f3522f-7b26-4880-9645-d3ad66f4838b
 # ╠═96c363fd-7b02-4f56-b80b-64ae4eba2b7d
-# ╟─bcf0fb30-a7c1-42b4-a600-1d22d1337bd2
-# ╟─445f820a-d728-40d9-8931-c57d68e73465
+# ╠═bcf0fb30-a7c1-42b4-a600-1d22d1337bd2
+# ╠═445f820a-d728-40d9-8931-c57d68e73465
 # ╠═a08f37fe-8b91-473c-86e6-5f6bc3dc2654
 # ╠═8c594c78-3936-421f-9c2a-3d5cf7360459
-# ╟─f21edd05-313d-4b86-8d32-efeec20563e7
+# ╠═f21edd05-313d-4b86-8d32-efeec20563e7
 # ╠═057bff58-80b8-47d0-be1c-d8f29ae5af61
 # ╠═eaed7dc5-0030-440b-966f-8c54b4b5b880
 # ╠═31c0b694-d44d-4671-b599-9dc8c10c22b3
 # ╠═0b0bd243-a01b-41e0-b463-ad88ccbd6d32
 # ╠═1fd59165-56b9-4359-b1be-b310c07ec37d
-# ╟─773aeb7c-7384-48a5-9f15-8ceb886e68de
+# ╠═773aeb7c-7384-48a5-9f15-8ceb886e68de
 # ╠═8eeeb415-843d-4e02-a0d2-ed8c2e68f83b
 # ╠═08c4eca9-5486-4375-b9f7-68b5d38a40d2
 # ╠═d765047a-4d2a-494d-82c3-5f226b91ca40
-# ╟─89043a50-6e28-4a86-ae96-95723ca8a86f
+# ╠═89043a50-6e28-4a86-ae96-95723ca8a86f
 # ╠═7323e6f8-963c-4758-b94f-2e44859f6db4
 # ╠═912b142f-d5e8-454c-a920-36957188f045
 # ╠═8ac0c6dc-a58e-40da-bd53-00dfa00e56bf
@@ -3263,21 +3238,21 @@ version = "1.4.1+1"
 # ╠═9fb6cdfc-42af-4c9a-834d-cf6ab843dd6d
 # ╠═2e892a96-6791-406c-a2b2-c463a9d7bf5f
 # ╠═05862f61-8ba2-4f37-bcd7-968f8c7356c6
-# ╟─f5c08e91-c9ec-4bad-8503-46d8585672fa
+# ╠═f5c08e91-c9ec-4bad-8503-46d8585672fa
 # ╠═9f398fd0-0ff4-4cce-bbca-a6ce9457d241
 # ╠═1822008e-27a8-4806-aa16-d324fd189d96
 # ╠═2a047555-c821-4e81-a795-12d295cc383f
-# ╟─cd430d83-7b9a-4b69-90e6-87292df06e20
+# ╠═cd430d83-7b9a-4b69-90e6-87292df06e20
 # ╠═cca5db8c-d7f9-4087-9fb3-c304b34c3095
 # ╠═2a57727a-8289-4555-969c-16e84d1b34aa
 # ╟─c586376a-67f3-4576-88bc-b40d78562435
 # ╠═dafdd5da-7d0d-492a-ade5-a9e50abfedf2
 # ╠═bbbd86fe-376d-470c-943f-d2ca8d38b08a
-# ╟─e81f7ba7-3596-4960-9368-5836929c8ce0
+# ╠═e81f7ba7-3596-4960-9368-5836929c8ce0
 # ╠═c1ca8939-99e0-4cb4-ac8f-94a6f28c529e
 # ╠═0f4bfb27-0483-45ca-b8bb-d21fa5231c9c
 # ╠═6b77e7f2-d1d9-4b63-9705-507122fd5fe3
-# ╟─67bd9e57-e37c-4407-9ee3-0e22deeb25b0
+# ╠═67bd9e57-e37c-4407-9ee3-0e22deeb25b0
 # ╠═44fcbd22-cc6f-4c09-b749-406cff1aeced
 # ╟─1a090beb-8c1b-4a0d-aad3-d85a846ae323
 # ╠═51d7a213-2ba0-4d09-8ee2-0e91002ea915
@@ -3290,42 +3265,7 @@ version = "1.4.1+1"
 # ╠═14fd3f37-cf8b-4867-903f-36aa505b7683
 # ╠═706bb0da-9dff-47c8-bd42-6096fa7e0025
 # ╠═5e68050f-758f-4380-9fbe-f4cae31e0754
-# ╟─8f428c07-e87e-4642-be5e-2347a25a86f4
-# ╠═c4065dfe-55c5-42a0-88bc-9231125757b9
-# ╠═b6cf9057-1f2a-42cc-9233-6692806ee419
-# ╠═af8227a8-3249-43dd-8bc6-0f08a05e81ef
-# ╠═4756ab6b-fc05-40ca-9759-c6f1d0b78ff7
-# ╟─9975d122-59e6-4513-ad82-7f5a7c37bbe4
-# ╠═d72cab2e-7c27-471e-af55-2c575230ca93
-# ╠═0813082a-36b3-4d9f-867a-5324281f244b
-# ╠═0d525767-52eb-490c-b628-1a7db9ecea21
-# ╠═cff0108b-b745-4f2e-9f27-48e3624bbf0e
-# ╠═8849387c-f4b0-47f3-9061-e286e23edbde
-# ╠═c5c9bdaa-6e3b-46d9-b537-791a7c1739bf
-# ╠═28cbcd7a-bfb3-4f59-86fc-d5e84829da01
-# ╠═65f761e5-5b59-4d87-89ae-a763591e63d9
-# ╠═4ef1c808-bc54-459e-a0c4-4928714eaa0b
-# ╟─a8393424-e097-4dd5-be88-24886798ffb0
-# ╠═7c0c50dc-e376-4365-b2ec-eeb7f26722fd
-# ╠═48477352-5850-4291-8b99-e4a688811246
-# ╠═41a0c3b8-8975-4d69-88cf-6d076f5ad5f2
-# ╟─baf60493-ff2f-4e17-8314-7c7ebdfaf536
-# ╠═df4c8aa3-9961-44ca-b24f-0bf3f7e26d39
-# ╠═f3027ecf-4b95-4a76-b5cf-b572ca3eb050
-# ╠═245f4489-1320-4502-a956-5f922e4fcf8e
-# ╠═b551b54c-ab60-473a-89df-c7e9388cecd0
-# ╠═f6870036-a104-41a0-8b4f-a23d38b119d4
-# ╠═ac4a1de3-8ac4-4acb-9a0e-d7f517253e50
-# ╠═d832417b-151f-4a0f-8084-6c9007c8614a
-# ╠═f875202b-5c14-4800-8624-af904d1b19a3
-# ╟─a1198545-4cc6-420e-bc85-ddde4ba8ab3c
-# ╟─8d269347-42a0-4ce6-8b07-1d065780eda1
-# ╠═3c6f3a86-84c2-4ef8-b520-a5804d053d86
-# ╠═c37b709c-bcf5-4229-a421-5b40cbda24f8
-# ╠═dd7592d0-0031-4978-8392-80d31d672f21
-# ╠═4d22ab2c-88af-4349-8a10-fd48e83c835d
-# ╠═fc893fa0-77f0-44fb-8071-b5b3c5d64697
-# ╟─cc9b2c50-e5d0-4764-8089-95804c5a1dc7
+# ╠═cc9b2c50-e5d0-4764-8089-95804c5a1dc7
 # ╠═4a05157d-1792-4f01-8b80-0639aac47998
 # ╠═b1011fa7-ea8a-4c0c-935e-2a57056612b1
 # ╠═c58b1888-a957-4e49-8486-e0f46346d03a
